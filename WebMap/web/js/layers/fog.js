@@ -16,9 +16,12 @@ export class FogLayer {
     this.canvas.width = this.size; this.canvas.height = this.size;
     this.src = document.createElement('canvas');
     this.src.width = this.size; this.src.height = this.size;
-    this.overlay = null;
     this.opacity = 1;   // unexplored ground is black until someone walks there
     this.visible = true;
+    const black = document.createElement('canvas');
+    black.width = black.height = 1;
+    black.getContext('2d').fillRect(0, 0, 1, 1);
+    this.overlay = L.imageOverlay(black.toDataURL(), this.bounds, { opacity: this.opacity, className: 'fog-layer', zIndex: 300, interactive: false }).addTo(this.map);
     this.timer = null;
     this.exploredPct = 0;
   }
