@@ -35,7 +35,8 @@ $candidates = @(
 if (-not $candidates) {
   throw "Valheim assemblies not found. Install the 'Valheim Dedicated Server' tool in Steam (or the game) and pass -ValheimManaged <path to ...\valheim_server_Data\Managed>."
 }
-$managed = $candidates[0]
+## Force array semantics when only one candidate path matches.
+$managed = @($candidates)[0]
 Write-Host "Game assemblies: $managed"
 New-Item -ItemType Directory -Force libs\valheim | Out-Null
 $needed = @("assembly_valheim.dll", "assembly_utils.dll", "Mono.Security.dll", "UnityEngine.dll", "UnityEngine.CoreModule.dll",

@@ -100,8 +100,18 @@ namespace WebMap
         {
             __instance = this;
             httpServer = new HttpServer(SERVER_PORT);
-            httpServer.AddWebSocketService<WebSocketHandler>("/ws");
-            httpServer.AddWebSocketService<WebSocketHandler>("/");
+            
+// Disable WebSocket extensions for compatibility with reverse proxies such as IIS ARR.
+// This should ideally be exposed as a configuration option rather than hard-coded.          
+        httpServer.AddWebSocketService<WebSocketHandler>("/ws", ws =>
+        {
+        ws.IgnoreExtensions = true;
+        });
+        httpServer.AddWebSocketService<WebSocketHandler>("/", ws =>
+        {
+        ws.IgnoreExtensions = true;
+        });
+            
             httpServer.KeepClean = true;
             wsHost = httpServer.WebSocketServices["/ws"];
             wsLegacyHost = httpServer.WebSocketServices["/"];
