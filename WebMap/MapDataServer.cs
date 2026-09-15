@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using WebSocketSharp;
 using WebSocketSharp.Net;
@@ -39,7 +40,9 @@ namespace WebMap
     //   /api/status                renderer and sweep status
     //   /api/rerender?zoom=N (POST, token)   re-render tiles from zoom N up
     //   /api/reexport (POST, token)  re-export all prefab models (after extracting textures)
+    //   /api/reload (POST, token)    drop cached web files and tell open browsers to refresh (no restart)
     //   /api/sweep (POST)          run a world sweep now
+    //   /api/pin (POST) place a pin from the page, /api/unpin?id= (POST) remove one of your own
     //   simple endpoints: /map /map.jpg /fog /players /pins /messages /structures /structures/stats
     //               /structures/refresh /forest /forest/stats /vehicles /announce (POST)
     //   websocket: /ws (and / for old clients), JSON frames, see Broadcast()
@@ -81,6 +84,7 @@ namespace WebMap
         private readonly ConcurrentDictionary<string, byte[]> fileCache = new ConcurrentDictionary<string, byte[]>();
         private readonly HttpServer httpServer;
         private readonly string publicRoot;
+        private static Dictionary<string, string> embeddedWeb;   // "js/app.js" -> resource name
         private readonly WebSocketServiceHost wsHost, wsLegacyHost;
         private static MapDataServer __instance;
 
@@ -100,18 +104,10 @@ namespace WebMap
         {
             __instance = this;
             httpServer = new HttpServer(SERVER_PORT);
-            
-// Disable WebSocket extensions for compatibility with reverse proxies such as IIS ARR.
-// This should ideally be exposed as a configuration option rather than hard-coded.          
-        httpServer.AddWebSocketService<WebSocketHandler>("/ws", ws =>
-        {
-        ws.IgnoreExtensions = true;
-        });
-        httpServer.AddWebSocketService<WebSocketHandler>("/", ws =>
-        {
-        ws.IgnoreExtensions = true;
-        });
-            
+            // permessage-deflate is off unless asked for: IIS ARR and some other proxies accept the
+            // handshake with it and then stall every frame
+            httpServer.AddWebSocketService<WebSocketHandler>("/ws", ws => ws.IgnoreExtensions = !WEBSOCKET_COMPRESSION);
+            httpServer.AddWebSocketService<WebSocketHandler>("/", ws => ws.IgnoreExtensions = !WEBSOCKET_COMPRESSION);
             httpServer.KeepClean = true;
             wsHost = httpServer.WebSocketServices["/ws"];
             wsLegacyHost = httpServer.WebSocketServices["/"];
@@ -307,6 +303,18 @@ namespace WebMap
                     int n = TileStore.Rerender(z);
                     return Text(e, "{\"queued\":" + n + "}", "application/json", nocache: true, status: 202);
                 }
+                case "/api/reload":
+                {
+                    // pick up new files in web/ without restarting the game: forget the cached copies
+                    // and tell every open browser to refresh. The DLL itself still needs a restart.
+                    if (!post) return false;
+                    if (!Authorized(req)) return Text(e, "{\"error\":\"forbidden\"}", "application/json", nocache: true, status: 403);
+                    int n = fileCache.Count;
+                    fileCache.Clear();
+                    Reload();
+                    ZLog.Log("WebMap: web files reloaded (" + n + " cached files dropped), browsers told to refresh");
+                    return Text(e, "{\"dropped\":" + n + ",\"browsers\":" + (wsHost.Sessions.Count + wsLegacyHost.Sessions.Count) + "}", "application/json", nocache: true);
+                }
 
                 // ---- simple endpoints (single-image map, plain lists)
                 case "/map":
@@ -331,6 +339,37 @@ namespace WebMap
                 case "/forest": return Bytes(e, ForestMap.GetPng(), "image/png", "no-cache");
                 case "/forest/stats": return Text(e, ForestMap.GetStats(), "application/json", nocache: true);
                 case "/vehicles": return Text(e, Vehicles.GetJson(), "application/json", nocache: true);
+                case "/api/pin":
+                {
+                    // place a pin from the web page. Body: JSON {x,z,type,text,name,client}
+                    if (!post) return false;
+                    if (!WEB_PINS && !Authorized(req)) return Text(e, "{\"error\":\"web pins are off\"}", "application/json", nocache: true, status: 403);
+                    string body;
+                    using (var sr = new StreamReader(req.InputStream, Encoding.UTF8)) body = sr.ReadToEnd();
+                    Dictionary<string, object> f;
+                    try { f = JsonParser.Parse(body) as Dictionary<string, object>; } catch { f = null; }
+                    if (f == null || !f.TryGetValue("x", out object xo) || !f.TryGetValue("z", out object zo)) return Text(e, "{\"error\":\"need x and z\"}", "application/json", nocache: true, status: 400);
+                    float x = Convert.ToSingle(xo, CultureInfo.InvariantCulture), z = Convert.ToSingle(zo, CultureInfo.InvariantCulture);
+                    float half = Tiles.TileMath.WORLD_SIZE / 2f;
+                    if (float.IsNaN(x) || float.IsNaN(z) || Mathf.Abs(x) > half || Mathf.Abs(z) > half) return Text(e, "{\"error\":\"off the map\"}", "application/json", nocache: true, status: 400);
+                    string owner = WebOwner(req, f);
+                    if (!PinRateOk(owner)) return Text(e, "{\"error\":\"slow down\"}", "application/json", nocache: true, status: 429);
+                    string name = WebMap.CleanPinText(f.TryGetValue("name", out object no) ? no as string : null, 16);
+                    if (name.Length == 0) name = "web";
+                    string id = WebMap.PlacePin(owner, f.TryGetValue("type", out object to) ? to as string : "dot", name, new Vector3(x, 0, z), f.TryGetValue("text", out object txo) ? txo as string : "");
+                    return Text(e, "{\"id\":\"" + id + "\",\"owner\":\"" + owner + "\"}", "application/json", nocache: true);
+                }
+                case "/api/unpin":
+                {
+                    // remove one pin: ?id=<pin id>. Only its owner (same browser) or the token holder
+                    if (!post) return false;
+                    string id = req.QueryString["id"] ?? "";
+                    if (id.Length == 0 || id.Contains(",")) return Text(e, "{\"error\":\"need id\"}", "application/json", nocache: true, status: 400);
+                    string owner = Authorized(req) ? "" : WebOwner(req, null);
+                    if (!WEB_PINS && owner.Length > 0) return Text(e, "{\"error\":\"web pins are off\"}", "application/json", nocache: true, status: 403);
+                    bool ok = WebMap.DeletePinById(owner, id);
+                    return Text(e, ok ? "{\"removed\":true}" : "{\"error\":\"not yours\"}", "application/json", nocache: true, status: ok ? 200 : 404);
+                }
                 case "/announce":
                 {
                     if (!post) return false;
@@ -344,6 +383,33 @@ namespace WebMap
                 }
             }
             return false;
+        }
+
+        // a browser identifies itself with a random id it made up and keeps (X-WebMap-Client header
+        // or "client" in the body); pins it placed can be removed from that browser only
+        private static readonly Regex clientIdFilter = new Regex("[^A-Za-z0-9_-]", RegexOptions.Compiled);
+        private static readonly Dictionary<string, float> pinLast = new Dictionary<string, float>();
+
+        private static string WebOwner(HttpListenerRequest req, Dictionary<string, object> body)
+        {
+            string c = req.Headers["X-WebMap-Client"];
+            if (string.IsNullOrEmpty(c) && body != null && body.TryGetValue("client", out object co)) c = co as string;
+            c = clientIdFilter.Replace(c ?? "", "");
+            if (c.Length > 40) c = c.Substring(0, 40);
+            if (c.Length == 0) c = "anon";
+            return "web:" + c;
+        }
+
+        private static bool PinRateOk(string owner)
+        {
+            float now = (float)(DateTime.UtcNow - new DateTime(2020, 1, 1)).TotalSeconds;
+            lock (pinLast)
+            {
+                if (pinLast.TryGetValue(owner, out float last) && now - last < 2f) return false;
+                pinLast[owner] = now;
+                if (pinLast.Count > 512) pinLast.Clear();
+            }
+            return true;
         }
 
         private static bool Authorized(HttpListenerRequest req)
@@ -473,9 +539,16 @@ namespace WebMap
             if (!fileCache.TryGetValue(rel, out byte[] data))
             {
                 string full = Path.GetFullPath(Path.Combine(publicRoot, rel.Replace('/', Path.DirectorySeparatorChar)));
-                if (!full.StartsWith(publicRoot, StringComparison.Ordinal) || !File.Exists(full)) { NotFound(res); return; }
-                try { data = File.ReadAllBytes(full); }
-                catch (Exception ex) { ZLog.LogError("WebMap: failed to read " + rel + ": " + ex.Message); NotFound(res); return; }
+                if (full.StartsWith(publicRoot, StringComparison.Ordinal) && File.Exists(full))
+                {
+                    try { data = File.ReadAllBytes(full); }
+                    catch (Exception ex) { ZLog.LogError("WebMap: failed to read " + rel + ": " + ex.Message); NotFound(res); return; }
+                }
+                else
+                {
+                    data = EmbeddedWebFile(rel);     // no web folder on disk: the copy built into the DLL
+                    if (data == null) { NotFound(res); return; }
+                }
                 if (CACHE_SERVER_FILES) fileCache[rel] = data;
             }
             // vendored libraries never change between mod versions; everything else revalidates cheaply
@@ -489,6 +562,27 @@ namespace WebMap
             }
             res.Headers.Add("ETag", etag);
             Bytes(e, data, ctype, cache, compressible: ext == "html" || ext == "js" || ext == "mjs" || ext == "css" || ext == "json" || ext == "svg");
+        }
+
+        // the web app is also compiled into the DLL (see WebMap.csproj) so a missing web folder
+        // is not fatal; the first request logs which copy is in use
+        private byte[] EmbeddedWebFile(string rel)
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            if (embeddedWeb == null)
+            {
+                var map = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (string name in asm.GetManifestResourceNames())
+                    if (name.StartsWith("web/") || name.StartsWith("web\\")) map[name.Substring(4).Replace('\\', '/')] = name;
+                embeddedWeb = map;
+                if (!Directory.Exists(publicRoot)) ZLog.LogWarning("WebMap: no web folder next to WebMap.dll, serving the copy built into the DLL (" + map.Count + " files)");
+            }
+            if (!embeddedWeb.TryGetValue(rel, out string resName)) return null;
+            using (var st = asm.GetManifestResourceStream(resName))
+            {
+                if (st == null) return null;
+                using (var ms = new MemoryStream()) { st.CopyTo(ms); return ms.ToArray(); }
+            }
         }
 
         private static uint Fnv(byte[] d)

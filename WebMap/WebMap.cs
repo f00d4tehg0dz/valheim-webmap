@@ -21,7 +21,7 @@ namespace WebMap
     {
         public const string GUID = "com.valheimwebmap.server";
         public const string NAME = "WebMap";
-        public const string VERSION = "2.1.0";
+        public const string VERSION = "2.1.1";
 
         private static readonly string[] ALLOWED_PINS = { "dot", "fire", "mine", "house", "cave" };
 
@@ -237,6 +237,101 @@ namespace WebMap
         {
             try { lock (mapDataServer.pins) File.WriteAllLines(Path.Combine(worldDataPath, "pins.csv"), mapDataServer.pins); }
             catch (Exception e) { ZLog.Log("WebMap: FAILED TO WRITE PINS FILE! " + e.Message); }
+        }
+
+        // ---------------------------------------------------------------- pins
+        //
+        // Pins come from chat (!pin, !undopin, !deletepin) and from the web page (POST /api/pin).
+        // On Valheim 1.0 chat is sent player to player, so the server only sees it while it is
+        // forwarding between two or more players: a lone player's !pin never reaches us. The web
+        // page is the way that always works.
+
+        public static readonly Regex PinTextFilter = new Regex("[^a-zA-Z0-9 ]", RegexOptions.Compiled);
+
+        public static string CleanPinText(string text, int max = 20)
+        {
+            text = PinTextFilter.Replace((text ?? "").Trim(), "");
+            return text.Length > max ? text.Substring(0, max) : text;
+        }
+
+        public static string CleanPinType(string type) => Array.Exists(ALLOWED_PINS, e => e == (type ?? "").ToLower()) ? type.ToLower() : "dot";
+
+        // owner: who may undo it (steam id for chat, "web:<client>" for the page)
+        public static string PlacePin(string owner, string type, string name, Vector3 pos, string text)
+        {
+            long timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds();
+            string pinId = $"{timestamp}-{Random.Range(1000, 9999)}";
+            mapDataServer.AddPin(owner, pinId, CleanPinType(type), name, pos, CleanPinText(text));
+
+            int overflow;
+            lock (mapDataServer.pins) overflow = mapDataServer.pins.FindAll(pin => pin.StartsWith(owner + ",")).Count - WebMapConfig.MAX_PINS_PER_USER;
+            for (int t = overflow; t > 0; t--)
+            {
+                int pinIdx;
+                lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindIndex(pin => pin.StartsWith(owner + ","));
+                if (pinIdx > -1) mapDataServer.RemovePin(pinIdx);
+            }
+            SavePins();
+            return pinId;
+        }
+
+        public static bool UndoPin(string owner)
+        {
+            int pinIdx;
+            lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindLastIndex(pin => pin.StartsWith(owner + ","));
+            if (pinIdx < 0) return false;
+            mapDataServer.RemovePin(pinIdx); SavePins();
+            return true;
+        }
+
+        public static bool DeletePinByText(string owner, string text)
+        {
+            int pinIdx;
+            lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindLastIndex(pin =>
+            {
+                string[] pinParts = pin.Split(',');
+                return pinParts[0] == owner && pinParts[pinParts.Length - 1] == text;
+            });
+            if (pinIdx < 0) return false;
+            mapDataServer.RemovePin(pinIdx); SavePins();
+            return true;
+        }
+
+        // remove one pin by id; owner "" (token holder) may remove any
+        public static bool DeletePinById(string owner, string pinId)
+        {
+            int pinIdx;
+            lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindIndex(pin =>
+            {
+                string[] pinParts = pin.Split(',');
+                return pinParts.Length > 1 && pinParts[1] == pinId && (owner.Length == 0 || pinParts[0] == owner);
+            });
+            if (pinIdx < 0) return false;
+            mapDataServer.RemovePin(pinIdx); SavePins();
+            return true;
+        }
+
+        // true when the message was a command (and so not ordinary chat)
+        private static bool HandleChatCommand(string owner, string name, Vector3 pos, string message)
+        {
+            string upper = message.ToUpper();
+            if (upper.StartsWith("!PIN"))
+            {
+                string[] parts = message.Split(' ');
+                string type = "dot"; int startIdx = 1;
+                if (parts.Length > 1 && Array.Exists(ALLOWED_PINS, e => e == parts[1].ToLower())) { type = parts[1].ToLower(); startIdx = 2; }
+                string text = startIdx < parts.Length ? string.Join(" ", parts, startIdx, parts.Length - startIdx) : "";
+                PlacePin(owner, type, name, pos, text);
+                return true;
+            }
+            if (upper.StartsWith("!UNDOPIN")) { UndoPin(owner); return true; }
+            if (upper.StartsWith("!DELETEPIN"))
+            {
+                string[] parts = message.Split(' ');
+                DeletePinByText(owner, parts.Length > 1 ? string.Join(" ", parts, 1, parts.Length - 1) : "");
+                return true;
+            }
+            return false;
         }
 
         // ---------------------------------------------------------------- patches
@@ -455,60 +550,17 @@ namespace WebMap
                     sayMethodHash = data.m_methodHash;
                     try
                     {
-                        ZDO zdoData = ZDOMan.instance.GetZDO(peer.m_characterID);
-                        Vector3 pos = zdoData.GetPosition();
+                        // the talker's own ZDO is the rpc target on 1.0; fall back to the peer
+                        ZDO zdoData = !data.m_targetZDO.IsNone() ? ZDOMan.instance.GetZDO(data.m_targetZDO) : null;
+                        if (zdoData == null && peer != null) zdoData = ZDOMan.instance.GetZDO(peer.m_characterID);
+                        Vector3 pos = zdoData != null ? zdoData.GetPosition() : (peer != null ? peer.m_refPos : Vector3.zero);
                         ZPackage package = new ZPackage(data.m_parameters.GetArray());   // a copy: the original must still be forwarded
                         var messageType = package.ReadInt();
                         var userInfo = new UserInfo();
                         userInfo.Deserialize(ref package);
                         string message = (package.ReadString() ?? "").Trim();
 
-                        if (message.ToUpper().StartsWith("!PIN"))
-                        {
-                            string[] messageParts = message.Split(' ');
-                            string pinType = "dot";
-                            int startIdx = 1;
-                            if (messageParts.Length > 1 && Array.Exists(ALLOWED_PINS, e => e == messageParts[1].ToLower()))
-                            {
-                                pinType = messageParts[1].ToLower();
-                                startIdx = 2;
-                            }
-                            string pinText = startIdx < messageParts.Length ? string.Join(" ", messageParts, startIdx, messageParts.Length - startIdx) : "";
-                            if (pinText.Length > 20) pinText = pinText.Substring(0, 20);
-                            string safePinsText = Regex.Replace(pinText, "[^a-zA-Z0-9 ]", "");
-                            long timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds();
-                            string pinId = $"{timestamp}-{Random.Range(1000, 9999)}";
-                            mapDataServer.AddPin(steamid, pinId, pinType, userInfo.Name, pos, safePinsText);
-
-                            int numOverflowPins;
-                            lock (mapDataServer.pins) numOverflowPins = mapDataServer.pins.FindAll(pin => pin.StartsWith(steamid)).Count - WebMapConfig.MAX_PINS_PER_USER;
-                            for (int t = numOverflowPins; t > 0; t--)
-                            {
-                                int pinIdx;
-                                lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindIndex(pin => pin.StartsWith(steamid));
-                                if (pinIdx > -1) mapDataServer.RemovePin(pinIdx);
-                            }
-                            SavePins();
-                        }
-                        else if (message.ToUpper().StartsWith("!UNDOPIN"))
-                        {
-                            int pinIdx;
-                            lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindLastIndex(pin => pin.StartsWith(steamid));
-                            if (pinIdx > -1) { mapDataServer.RemovePin(pinIdx); SavePins(); }
-                        }
-                        else if (message.ToUpper().StartsWith("!DELETEPIN"))
-                        {
-                            string[] messageParts = message.Split(' ');
-                            string pinText = messageParts.Length > 1 ? string.Join(" ", messageParts, 1, messageParts.Length - 1) : "";
-                            int pinIdx;
-                            lock (mapDataServer.pins) pinIdx = mapDataServer.pins.FindLastIndex(pin =>
-                            {
-                                string[] pinParts = pin.Split(',');
-                                return pinParts[0] == steamid && pinParts[pinParts.Length - 1] == pinText;
-                            });
-                            if (pinIdx > -1) { mapDataServer.RemovePin(pinIdx); SavePins(); }
-                        }
-                        else if (messageType != (int)Talker.Type.Whisper)
+                        if (!HandleChatCommand(steamid, userInfo.Name, pos, message) && messageType != (int)Talker.Type.Whisper)
                         {
                             mapDataServer.AddMessage(data.m_senderPeerID, messageType, userInfo.Name, message);
                         }
@@ -532,7 +584,8 @@ namespace WebMap
                         else
                         {
                             var message = (package.ReadString() ?? "").Trim();
-                            mapDataServer.AddMessage(data.m_senderPeerID, messageType, userInfo.Name, message);
+                            if (!HandleChatCommand(steamid, userInfo.Name, pos, message))
+                                mapDataServer.AddMessage(data.m_senderPeerID, messageType, userInfo.Name, message);
                         }
                     }
                     catch (Exception ex) { if (WebMapConfig.DEBUG) ZLog.LogError(ex.ToString()); }

@@ -51,16 +51,19 @@ dotnet build WebMap/WebMap.csproj -c Release -v minimal
 # --- package
 V=$(python3 -c "import json;print(json.load(open('manifest.json'))['version_number'])" 2>/dev/null || grep -o '"version_number": *"[^"]*"' manifest.json | cut -d'"' -f4)
 rm -rf dist/pkg "dist/ValheimWebMap-$V.zip"
-mkdir -p dist/pkg/WebMap
-cp WebMap/bin/Release/WebMap.dll WebMap/bin/Release/websocket-sharp.dll dist/pkg/WebMap/
-cp -r WebMap/web dist/pkg/WebMap/web
-mkdir -p dist/pkg/WebMap/tools && cp tools/extract_textures.py dist/pkg/WebMap/tools/
+# plugins/WebMap/ inside the zip: r2modman, Gale and Thunderstore know that folder and keep
+# everything under it together (the web folder included) when they install
+PKG=dist/pkg/plugins/WebMap
+mkdir -p "$PKG"
+cp WebMap/bin/Release/WebMap.dll WebMap/bin/Release/websocket-sharp.dll "$PKG/"
+cp -r WebMap/web "$PKG/web"
+mkdir -p "$PKG/tools" && cp tools/extract_textures.py "$PKG/tools/"
 cp manifest.json README.md CHANGELOG.md icon.png LICENSE dist/pkg/
 (cd dist/pkg && zip -qr "../ValheimWebMap-$V.zip" . -x '.*')
 echo "packaged dist/ValheimWebMap-$V.zip"
 
 if [ -n "$DEPLOY" ]; then
   mkdir -p "$DEPLOY/WebMap"
-  cp -r dist/pkg/WebMap/. "$DEPLOY/WebMap/"
+  cp -r "$PKG/." "$DEPLOY/WebMap/"
   echo "deployed to $DEPLOY/WebMap"
 fi

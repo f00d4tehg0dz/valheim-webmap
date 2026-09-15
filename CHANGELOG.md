@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.1.1
+
+* Pins from the web page. Right click (long press on a phone), pick a type,
+  label, done. Remove your own from the popup. `POST /api/pin`,
+  `POST /api/unpin?id=`. `web_pins` turns it off. (#2)
+* `!pin` in chat works from shouts too, and finds the talker's position on
+  1.0. But: since 1.0 the game sends chat player to player, so the server only
+  sees it with two or more players online. Alone, chat pins never arrive.
+  README says so. Use the page. (#2)
+* Phone held upright: the 3D button and the rest of the top bar stay on
+  screen. Title and export hide on narrow screens. (#3)
+* The web app is built into the DLL. Lost `web/` folder (mod managers, hand
+  installs): the map still shows. A `web/` folder next to the DLL wins. Zip
+  now has `plugins/WebMap/` at the top, the layout r2modman and Gale expect.
+  (#1)
+* WebSocket compression off by default, `websocket_compression` turns it
+  back on. IIS ARR accepted the handshake and then stalled. (#5, thanks
+  Aughen)
+* Fog starts fully black before the first mask arrives, no flash of the
+  whole map. (#7, thanks clanofartisans)
+* Build script: one `-ValheimManaged` path works. (#6)
+* `POST /api/reload` (token): drop cached web files and refresh open
+  browsers. Update the web app without restarting the game.
+* Layer list says "Pins", not "Chat pins".
+
 ## 2.1.0
 
 * Old trips count. Fog lifts everywhere players have already been, even from

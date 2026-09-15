@@ -17,6 +17,8 @@ namespace WebMap
         public static float UPDATE_FOG_TEXTURE_INTERVAL = 2f;
         public static float SAVE_FOG_TEXTURE_INTERVAL = 30f;
         public static int MAX_PINS_PER_USER = 50;
+        public static bool WEB_PINS = true;
+        public static bool WEBSOCKET_COMPRESSION = false;
         public static int MAX_MESSAGES = 100;
         public static bool ALWAYS_MAP = true;
         public static bool ALWAYS_VISIBLE = false;
@@ -108,6 +110,14 @@ namespace WebMap
             MAX_PINS_PER_USER = config.Bind("User", "max_pins_per_user",
                 WebMapConfig.MAX_PINS_PER_USER,
                 "How many pins each client is allowed to make before old ones start being deleted.").Value;
+
+            WEB_PINS = config.Bind("User", "web_pins",
+                WebMapConfig.WEB_PINS,
+                "Let people place and remove their own pins from the web page (right click or long press the map). Chat pins (!pin) only reach the server while two or more players are online, so this is the way that always works.").Value;
+
+            WEBSOCKET_COMPRESSION = config.Bind("Server", "websocket_compression",
+                WebMapConfig.WEBSOCKET_COMPRESSION,
+                "Allow permessage-deflate on the live websocket. Off by default: some reverse proxies (IIS ARR) accept the handshake and then drop every frame.").Value;
 
             SERVER_PORT = config.Bind("Server", "server_port",
                 WebMapConfig.SERVER_PORT,
@@ -286,6 +296,8 @@ namespace WebMap
             config["update_interval"] = PLAYER_UPDATE_INTERVAL;
             config["explore_radius"] = EXPLORE_RADIUS;
             config["max_messages"] = MAX_MESSAGES;
+            config["web_pins"] = WEB_PINS;
+            config["max_pins_per_user"] = MAX_PINS_PER_USER;
             config["always_map"] = ALWAYS_MAP;
             config["always_visible"] = ALWAYS_VISIBLE;
             config["title"] = string.IsNullOrEmpty(MAP_TITLE) ? (WebMap.serverInfo != null && WebMap.serverInfo.ContainsKey("serverName") ? WebMap.serverInfo["serverName"].ToString() : "Valheim") : MAP_TITLE;

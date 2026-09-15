@@ -162,6 +162,13 @@ table.stats tr.on td:first-child::before { content: ""; display: inline-block; w
 .leaflet-popup-content { margin: 10px 14px; font: 13px var(--font); }
 .leaflet-popup-content b { display: block; margin-bottom: 2px; }
 .leaflet-popup-content small { color: var(--muted); }
+.pin-actions { margin-top: 8px; }
+.pin-form { min-width: 220px; }
+.pin-form .row { display: flex; gap: 6px; margin-top: 6px; }
+.pin-form input, .pin-form select { flex: 1; min-width: 0; font: 13px var(--font); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }
+.pin-form select { flex: 0 0 auto; }
+.pin-form .err { display: block; margin-top: 6px; color: #e07a6a; }
+.pin-form-popup .leaflet-popup-content { margin: 10px 12px; }
 .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
 .fog-layer { image-rendering: auto; }
 .tile-fallback { position: absolute; }
@@ -181,6 +188,18 @@ table.stats tr.on td:first-child::before { content: ""; display: inline-block; w
   .app:not(.sidebar-hidden) .leaflet-left { left: 8px; }
   .hud { font-size: 11px; }
   .v3d-help { display: none; }
+  .topbar { gap: 6px; padding: 0 8px; }
+  .topbar-right { flex: none; }
+  .search { min-width: 80px; }
+  .mode-btn span { display: none; }
+  .mode-btn { padding: 0 9px; }
+}
+/* phones held upright: title and export go, the 3D button and the rest stay reachable */
+@media (max-width: 560px) {
+  .topbar .title { display: none; }
+  .search { margin-left: 0; }
+  #btn-export { display: none; }
+  .pill { padding: 4px 8px; }
 }
 
 /* export dialog */

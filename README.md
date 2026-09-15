@@ -50,11 +50,14 @@ browser. Share `http://your_ip:3000`. Players install nothing. Server only.
 
 ## Install
 
-1. Put [BepInEx] on the server. Copy the `WebMap` folder to
+1. Put [BepInEx] on the server. Unzip. Copy the `plugins/WebMap` folder to
 
        <server>/BepInEx/plugins/WebMap
 
-   Folder holds `WebMap.dll`, `websocket-sharp.dll`, `web/`.
+   Folder holds `WebMap.dll`, `websocket-sharp.dll`, `web/`. Mod managers
+   (r2modman, Gale, Thunderstore) do this for you. Lost the `web/` folder?
+   No matter: a copy lives inside the DLL and the map still shows. Put a
+   `web/` folder next to the DLL and it wins, so you can change the page.
 
    **Docker (lloesche/valheim-server):** with `BEPINEX=true`, BepInEx lives
    at `/opt/valheim/bepinex/BepInEx` on the data volume. `/config/bepinex`
@@ -154,6 +157,8 @@ cuts that by four.
 | Texture | `reveal_visited_margin` | 3 | how far in from the edge of the built zones the reveal stops (0 = 320 m, 3 = 150 m, 4 = 100 m) |
 | Discord | `discord_webhook`, `discord_invite_url` | | webhook for events |
 | Server | `webmap_url`, `max_pins_per_user` | | link shown in game, pin limit |
+| User | `web_pins` | true | let the web page place pins (right click / long press) |
+| Server | `websocket_compression` | false | permessage-deflate on the live feed. Off: IIS ARR and some proxies drop every frame with it on |
 
 ### Your own markers
 
@@ -218,6 +223,7 @@ Steps per editor in [docs/EXPORT.md](docs/EXPORT.md).
 | `POST /api/sweep` | walk the world now |
 | `POST /api/rerender?zoom=N` | redraw tiles from zoom N up (token) |
 | `POST /api/reexport` | export every model again (token) |
+| `POST /api/reload` | forget cached web files, refresh every open browser (token). Swap files in `web/` without restarting the game |
 | `POST /announce` | message on every player's screen (token) |
 | `/map`, `/map.jpg`, `/fog`, `/players`, `/pins`, `/messages`, `/structures`, `/structures/stats`, `/structures/refresh`, `/forest`, `/forest/stats`, `/vehicles` | simple endpoints: one-image map, plain lists |
 
@@ -231,20 +237,46 @@ metres per pixel. `tx = floor((x + 10240) / (256 · 2^(7-z)))`,
 
 ### Token
 
-`POST /announce`, `/api/rerender`, `/api/reexport` need a secret in header
+`POST /announce`, `/api/rerender`, `/api/reexport`, `/api/reload` need a secret in header
 `X-Announce-Token`. Secret is read from file `announce.token` next to the
 DLL. No file, no access.
 
-## Chat commands
+### New web files, no restart
+
+Changed something in `web/`? Copy the files over, then:
+
+```
+curl -X POST -H "X-Announce-Token: yoursecret" http://localhost:3000/api/reload
+```
+
+Server forgets its cached copies and every open browser reloads. Only the
+web files. A new DLL still needs a game restart. For dev work set
+`cache_server_files = false` and the server reads from disk every time.
+
+## Pins
+
+**From the web page.** Right click the map (long press on a phone). Pick a
+type, write a label, add pin. Your own pins have a "Remove pin" button.
+Only the browser that made a pin can remove it. `web_pins = false` turns
+this off. `max_pins_per_user` caps pins per browser, old ones go first.
+
+**From chat.** Type in game:
 
 * `!pin [type] [text]` — types `dot`, `fire`, `mine`, `house`, `cave`
 * `!undoPin`, `!deletePin [text]`
+
+Chat pins have a catch. Since Valheim 1.0 the game sends chat straight from
+player to player, not to the server. The server only sees chat while it
+passes it on between two or more players. Alone on the server, your `!pin`
+never arrives. Not a bug in the mod, nothing the mod can do. Use the web
+page, it always works. Pings (middle click on the in-game map) still reach
+the server, alone or not.
 
 ## Build
 
 Windows: `.\build.ps1`. Needs .NET SDK and the Steam "Valheim Dedicated
 Server" tool, or `-ValheimManaged <path>`. Linux/macOS: `./build.sh`.
-Output: `dist/ValheimWebMap-<version>.zip` and `dist/pkg/WebMap/`.
+Output: `dist/ValheimWebMap-<version>.zip` and `dist/pkg/plugins/WebMap/`.
 `-Deploy <plugins dir>` or `--deploy` copies the plugin there.
 
 ## Public demo site

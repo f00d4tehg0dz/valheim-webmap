@@ -332,7 +332,8 @@ const events = [{ id: 1, ts: new Date().toISOString(), type: 'server', name: 'Se
 const stats = () => ({ server: { startedUtc: new Date(Date.now() - 3.6e6).toISOString(), online: 2, day: 142, dayFraction: 0.4, night: false, exploredPercent: 6.3, structures: pieces.length, trees: 12831, rocks: 2200, terraformedZones: 12, objects: 481200, lastSweepUtc: new Date().toISOString(), lastSweepSeconds: 4.2, tiles: { onDisk: 512, queued: 3, rendered: 512, avgMs: 140, maxRenderZoom: 7 } },
   onlineHistory: Array.from({ length: 288 }, (_, i) => [Math.floor(Date.now() / 1000) - (288 - i) * 300, Math.round(2 + 2 * Math.sin(i / 20) + (i % 7 === 0 ? 1 : 0))]),
   players: [{ key: 'a', name: 'Ragnar', playtime: 54000, sessions: 31, deaths: 7, distance: 182000, portalTrips: 40, online: true, lastSeen: new Date().toISOString(), biomes: ['Meadows', 'Black Forest'] }, { key: 'b', name: 'Freya', playtime: 32000, sessions: 18, deaths: 2, distance: 91000, portalTrips: 12, online: true, lastSeen: new Date().toISOString(), biomes: ['Meadows'] }, { key: 'c', name: 'Olaf', playtime: 9000, sessions: 4, deaths: 9, distance: 12000, portalTrips: 1, online: false, lastSeen: new Date(Date.now() - 2 * 864e5).toISOString(), lastX: 300, lastZ: -200, biomes: ['Meadows'] }] });
-const config = { world_name: process.env.WEBMAP_WORLD || 'Mockheim', title: process.env.WEBMAP_TITLE || 'Mock server', version: '1.0.0-mock', texture_size: FOG, pixel_size: FPX, max_zoom: 7, world_size: 20480, world_start_pos: '0,40,0', water_level: WATER, enable_3d: true, explore_radius: 100, update_interval: 1 };
+const pins = [{ owner: 'x', id: 'p1', type: 'mine', name: 'Ragnar', x: 520, z: 480, text: 'copper' }];
+const config = { web_pins: true, world_name: process.env.WEBMAP_WORLD || 'Mockheim', title: process.env.WEBMAP_TITLE || 'Mock server', version: '1.0.0-mock', texture_size: FOG, pixel_size: FPX, max_zoom: 7, world_size: 20480, world_start_pos: '0,40,0', water_level: WATER, enable_3d: true, explore_radius: 100, update_interval: 1 };
 
 // ---------------------------------------------------------------- http
 const tileCache = new Map();
@@ -367,7 +368,28 @@ const server = http.createServer((req, res) => {
   if (p === '/data/players.json') return send(200, JSON.stringify({ count: players.length, players }), 'application/json');
   if (p === '/data/stats.json') return send(200, JSON.stringify(stats()), 'application/json');
   if (p === '/data/events.json') return send(200, JSON.stringify(events), 'application/json');
-  if (p === '/data/pins.json') return send(200, JSON.stringify([{ owner: 'x', id: 'p1', type: 'mine', name: 'Ragnar', x: 520, z: 480, text: 'copper' }]), 'application/json');
+  if (p === '/data/pins.json') return send(200, JSON.stringify(pins), 'application/json');
+  if (p === '/api/pin' && req.method === 'POST') {
+    let body = ''; req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
+    req.on('end', () => {
+      let f; try { f = JSON.parse(body); } catch (e) { return send(400, '{"error":"bad json"}', 'application/json'); }
+      const owner = 'web:' + String(req.headers['x-webmap-client'] || f.client || 'anon').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+      const clean = (t, n) => String(t || '').replace(/[^a-zA-Z0-9 ]/g, '').trim().slice(0, n);
+      const pin = { owner, id: `${Math.floor(Date.now() / 1000)}-${1000 + Math.floor(Math.random() * 9000)}`, type: ['dot', 'fire', 'mine', 'house', 'cave'].includes(f.type) ? f.type : 'dot', name: clean(f.name, 16) || 'web', x: Math.round(+f.x * 10) / 10, z: Math.round(+f.z * 10) / 10, text: clean(f.text, 20) };
+      if (!isFinite(pin.x) || !isFinite(pin.z)) return send(400, '{"error":"need x and z"}', 'application/json');
+      pins.push(pin); if (pins.length > 200) { const old = pins.shift(); broadcast({ t: 'rmpin', id: old.id }); }
+      broadcast(Object.assign({ t: 'pin' }, pin));
+      send(200, JSON.stringify({ id: pin.id, owner }), 'application/json');
+    });
+    return;
+  }
+  if (p === '/api/unpin' && req.method === 'POST') {
+    const owner = 'web:' + String(req.headers['x-webmap-client'] || 'anon').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+    const i = pins.findIndex((q) => q.id === u.searchParams.get('id') && q.owner === owner);
+    if (i < 0) return send(404, '{"error":"not yours"}', 'application/json');
+    pins.splice(i, 1); broadcast({ t: 'rmpin', id: u.searchParams.get('id') });
+    return send(200, '{"removed":true}', 'application/json');
+  }
   // static
   let rel = p === '/' ? 'index.html' : p.slice(1);
   if (rel.includes('..')) return send(404, 'no', 'text/plain');

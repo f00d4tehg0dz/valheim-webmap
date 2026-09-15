@@ -2,7 +2,7 @@
 // pins, each as a toggleable Leaflet layer group. Portals sharing a tag are
 // joined by a dashed line.
 
-import { toLatLng } from '../crs.js';
+import { toLatLng, fromLatLng } from '../crs.js';
 import { markers as store } from '../data.js';
 import { iconSvg, colors } from '../icons.js';
 import { getJSON, on } from '../net.js';
@@ -18,6 +18,19 @@ export function makeIcon(name, color, label, cls = 'mk') {
     tooltipAnchor: [0, -12],
   });
 }
+
+// this browser's id: made up once, kept; the server keys web pins by it so only this browser can remove them
+export function clientId() {
+  let id = null;
+  try { id = localStorage.getItem('webmap-client'); } catch (e) { /* storage blocked */ }
+  if (!id) {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 20);
+    try { localStorage.setItem('webmap-client', id); } catch (e) { /* fine, this visit only */ }
+  }
+  return id;
+}
+
+export const PIN_TYPES = ['dot', 'fire', 'mine', 'house', 'cave'];
 
 export function escape(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -107,7 +120,17 @@ export class MarkerLayers {
     const icon = ['dot', 'fire', 'mine', 'house', 'cave'].includes(p.type) ? p.type : 'pin';
     const mk = L.marker(toLatLng(p.x, p.z), { icon: makeIcon(icon, colors[icon], p.text, 'mk-pin'), keyboard: false });
     mk.data = p;
-    mk.bindPopup(`<b>${escape(p.text || 'Pin')}</b><small>by ${escape(p.name)} · ${p.x}, ${p.z}</small>`);
+    const mine = p.owner === 'web:' + clientId();
+    mk.bindPopup(() => {
+      const el = document.createElement('div');
+      el.innerHTML = `<b>${escape(p.text || 'Pin')}</b><small>by ${escape(p.name)} · ${p.x}, ${p.z}</small>` +
+        (mine ? `<div class="pin-actions"><button class="btn small" type="button">Remove pin</button></div>` : '');
+      el.querySelector('button')?.addEventListener('click', async () => {
+        try { await fetch('api/unpin?id=' + encodeURIComponent(p.id), { method: 'POST', headers: { 'X-WebMap-Client': clientId() } }); } catch (e) { console.warn('unpin', e); }
+        this.map.closePopup();
+      });
+      return el;
+    });
     this.pins.set(p.id, mk);
     this.pinGroup.addLayer(mk);
     this.emitPins();
@@ -116,6 +139,35 @@ export class MarkerLayers {
   removePin(id) {
     const mk = this.pins.get(id);
     if (mk) { this.pinGroup.removeLayer(mk); this.pins.delete(id); this.emitPins(); }
+  }
+
+  // right click / long press on the map: a small form, then POST /api/pin
+  openPinEditor(latlng) {
+    const { x, z } = fromLatLng(latlng);
+    let name = '';
+    try { name = localStorage.getItem('webmap-pin-name') || ''; } catch (e) { /* no storage */ }
+    const el = document.createElement('form');
+    el.className = 'pin-form';
+    el.innerHTML = `<b>New pin</b><small>${Math.round(x)}, ${Math.round(z)}</small>
+      <div class="row"><select name="type">${PIN_TYPES.map((t) => `<option value="${t}">${t}</option>`).join('')}</select>
+      <input name="text" maxlength="20" placeholder="Label (letters, numbers)" autocomplete="off"></div>
+      <div class="row"><input name="name" maxlength="16" placeholder="Your name" value="${escape(name)}" autocomplete="off"><button class="btn small" type="submit">Add pin</button></div>
+      <small class="err" hidden></small>`;
+    const popup = L.popup({ closeButton: true, autoPan: true, className: 'pin-form-popup' }).setLatLng(latlng).setContent(el).openOn(this.map);
+    setTimeout(() => el.querySelector('[name=text]').focus(), 50);
+    el.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const fd = new FormData(el);
+      const who = String(fd.get('name') || '').trim();
+      try { localStorage.setItem('webmap-pin-name', who); } catch (e) { /* no storage */ }
+      const err = el.querySelector('.err');
+      try {
+        const r = await fetch('api/pin', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WebMap-Client': clientId() },
+          body: JSON.stringify({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, type: fd.get('type'), text: fd.get('text'), name: who, client: clientId() }) });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || r.status); }
+        this.map.closePopup(popup);
+      } catch (e) { err.textContent = 'Could not add pin: ' + e.message; err.hidden = false; }
+    });
   }
 }
 

@@ -63,7 +63,9 @@ if ($LASTEXITCODE -ne 0) { throw "build failed" }
 
 # --- 4. package ---------------------------------------------------------------
 $version = (Get-Content manifest.json | ConvertFrom-Json).version_number
-$pkg = "dist\pkg\WebMap"
+# plugins\WebMap\ inside the zip: r2modman, Gale and Thunderstore know that folder and keep
+# everything under it together (the web folder included) when they install
+$pkg = "dist\pkg\plugins\WebMap"
 if (Test-Path dist\pkg) { Remove-Item dist\pkg -Recurse -Force }
 New-Item -ItemType Directory -Force $pkg | Out-Null
 Copy-Item WebMap\bin\Release\WebMap.dll, WebMap\bin\Release\websocket-sharp.dll $pkg

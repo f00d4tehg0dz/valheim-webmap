@@ -21,6 +21,11 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3"><PrivateAssets>all</PrivateAssets></PackageReference>
     <PackageReference Include="Krafs.Publicizer" Version="2.2.1"><PrivateAssets>all</PrivateAssets></PackageReference>
   </ItemGroup>
+  <!-- the web app rides inside the DLL too, so the map still works when a mod manager or a
+       hand install drops the web folder. Files on disk next to the DLL win when present. -->
+  <ItemGroup>
+    <EmbeddedResource Include="web\**\*" Exclude="web\**\.*" LogicalName="web/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
   <ItemGroup>
     <Publicize Include="assembly_valheim" />
     <Publicize Include="assembly_utils" />

@@ -80,7 +80,7 @@ export class Sidebar {
     stRow.append(slider(L.structures.opacity, (v) => { L.structures.setOpacity(v); S.set('buildingsOpacity', v); }));
     p.append(stRow);
     p.append(row('Players', S.players, (v) => { L.players.setVisible(v); S.set('players', v); }));
-    p.append(row('Chat pins', S.pins, (v) => { L.markers.setVisible('pins', v); S.set('pins', v); }));
+    p.append(row('Pins', S.pins, (v) => { L.markers.setVisible('pins', v); S.set('pins', v); }));
     p.append(row('Marker labels', S.labels, (v) => { document.body.classList.toggle('no-labels', !v); S.set('labels', v); }));
     p.append(row('Grid (256 m, 2D)', S.grid, (v) => { this.app.setGrid(v); S.set('grid', v); }));
     p.append(row('Trees & rocks (2D)', S.veg, (v) => { if (v) L.veg.addTo(this.app.map); else L.veg.remove(); S.set('veg', v); }));

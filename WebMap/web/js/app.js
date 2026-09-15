@@ -45,6 +45,8 @@ class App {
     this.layers.fog = new FogLayer(this.map, this.config);
     this.layers.structures = new StructuresLayer().addTo(this.map);
     this.layers.markers = new MarkerLayers(this.map);
+    // right click (long press on a phone) places a pin, unless the server turned web pins off
+    this.map.on('contextmenu', (e) => { if (this.config?.web_pins !== false) this.layers.markers.openPinEditor(e.latlng); });
     this.layers.players = new PlayersLayer(this.map);
     this.sidebar = new Sidebar(this);
     this.layers.players.onChange((ps) => { this.sidebar.renderPlayers(ps); if (this.view3d) this.view3d.setPlayers(ps); });
@@ -94,6 +96,7 @@ class App {
       try { await navigator.clipboard.writeText(location.href); this.toast('Link copied'); } catch { this.toast(location.href); }
     });
     const search = $('#search');
+    if (matchMedia('(max-width: 560px)').matches) search.placeholder = 'Search…';
     search.addEventListener('input', () => this.onSearch(search.value));
     search.addEventListener('focus', () => this.onSearch(search.value));
     search.addEventListener('keydown', (e) => {
