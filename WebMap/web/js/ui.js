@@ -94,6 +94,13 @@ export class Sidebar {
       objs.append(lab);
     }
     p.append(objs);
+    // lighting: time of day and shadows
+    const light = el(`<div class="row"><span>Time of day (3D)</span><select class="sel" id="time3d">
+      <option value="live">Live, like in game</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>`);
+    const sel = light.querySelector('select'); sel.value = S.time3d;
+    sel.addEventListener('change', () => S.set('time3d', sel.value));
+    p.append(light);
+    p.append(row('Shadows (3D)', S.shadows, (v) => S.set('shadows', v)));
 
     p.append(el('<h3>Markers</h3>'));
     this.markerSetRows = el('<div></div>');

@@ -155,6 +155,9 @@ vendored under `web/vendor`.
 * `layers/fog.js` — explored mask as black overlay. Refresh every 20 s.
 * `layers/structures.js` — canvas `GridLayer`, rotated footprints from
   chunk data. `pick()` for hover.
+* `sky.js` — `Lighting`: sky dome shader (gradient, sun, stars), sun/moon/hemisphere
+  lights, fog colour and a PMREM environment map, all from the day fraction; shadow
+  box follows the camera target and scales with view distance.
 * `layers/markers.js`, `layers/players.js` — marker sets, chat pins, portal
   links, player arrows, pings, follow mode.
 * `layerstate.js` — sidebar toggles shared by both views.

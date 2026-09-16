@@ -17,6 +17,11 @@ browser. Share `http://your_ip:3000`. Players install nothing. Server only.
   game's own model: walls, roofs, portals, ruins, trees, rocks, boats. Same
   spot, same rotation, same size as in the game. Ground has fine grain up
   close, no seams, no grid. Base looks like your base.
+* **Sky, sun, shadows.** The 3D view has a real sky: sun, stars, dawn and
+  dusk colours, fog to the horizon. Lit by the server's clock, so night on
+  the server is night on the map (or pick noon, evening... in Layers).
+  Buildings and trees cast shadows. Water ripples and mirrors the sky. Shadows
+  are off on phones unless you turn them on.
 * **Fog of war.** Ground nobody walked on is black. No switch to turn it off.
   Close-up tiles only draw where players walked.
 * **Old trips count.** Install the mod on a world you played for months and

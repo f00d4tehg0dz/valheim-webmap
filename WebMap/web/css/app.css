@@ -163,6 +163,7 @@ table.stats tr.on td:first-child::before { content: ""; display: inline-block; w
 .leaflet-popup-content b { display: block; margin-bottom: 2px; }
 .leaflet-popup-content small { color: var(--muted); }
 .pin-actions { margin-top: 8px; }
+.panel .row select.sel { margin-left: auto; font: 12px var(--font); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; max-width: 55%; }
 .pin-form { min-width: 220px; }
 .pin-form .row { display: flex; gap: 6px; margin-top: 6px; }
 .pin-form input, .pin-form select { flex: 1; min-width: 0; font: 13px var(--font); color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; }

@@ -12,7 +12,8 @@
 import * as THREE from 'three';
 import { MapControls } from 'three/addons/controls/MapControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { chunks, objects, prefabs, objectFilter, markers as markerStore } from './data.js';
+import { chunks, objects, prefabs, objectFilter, markers as markerStore, stats as statsStore } from './data.js';
+import { Lighting } from './sky.js';
 import { materialColors, colors as iconColors } from './icons.js';
 import { layerState } from './layerstate.js';
 import { WORLD_HALF, MAX_ZOOM, TILE, metersPerPixel, chunkOf } from './crs.js';
@@ -39,9 +40,9 @@ export class View3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x8fb4d8);
-    this.scene.fog = new THREE.Fog(0x8fb4d8, 2500, 9500);
     this.camera = new THREE.PerspectiveCamera(55, 1, 1, 30000);
     this.controls = new MapControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -52,11 +53,10 @@ export class View3D {
     this.controls.screenSpacePanning = false;
     this.controls.addEventListener('change', () => this.scheduleUpdate());
 
-    const hemi = new THREE.HemisphereLight(0xdde9ff, 0x4a5a3a, 1.1);
-    this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff2dc, 1.6);
-    sun.position.set(-0.45, 0.72, -0.53).multiplyScalar(4000);   // from the north-west, like the 2D shading
-    this.scene.add(sun);
+    // sky dome, sun, moon, fog colour and an environment map, all from the game's time of day
+    this.lighting = new Lighting(this.scene, this.renderer);
+    this.lighting.setShadows(layerState.shadows);
+    this.lastDayFraction = null;
 
     // fog of war is drawn by the ground itself: every terrain (and water) material is patched to
     // sample the explored mask in world space
@@ -67,9 +67,15 @@ export class View3D {
       uFogOffset: { value: (this.fogSize / 2 + 0.5) / this.fogSize },
       uDetail: { value: this.detailTexture() },
     };
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(26000, 26000), this.groundMaterial({ color: 0x1e4a70, transparent: true, opacity: 0.72, roughness: 0.25, metalness: 0.1 }, false));
+    // water: a big plane with a scrolling procedural normal map; the sky's environment map gives
+    // it its reflections, so it goes gold at sunset and black at night like the sea does
+    this.waterNormals = this.waterNormalTexture();
+    const waterMat = this.groundMaterial({ color: 0x1b4668, transparent: true, opacity: 0.8, roughness: 0.12, metalness: 0.0, normalMap: this.waterNormals, normalScale: new THREE.Vector2(0.35, 0.35), envMapIntensity: 1.2 }, false);
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(26000, 26000), waterMat);
     water.rotation.x = -Math.PI / 2;
     water.position.y = this.waterLevel;
+    water.receiveShadow = true;
+    this.water = water;
     this.scene.add(water);
 
     this.terrain = new Map();     // key -> {mesh, ready, z, x, y, heights}
@@ -153,6 +159,8 @@ export class View3D {
     this.playerGroup.visible = S.players;
     this.pinSprites.visible = S.pins;
     if (key === 'buildings' || key === 'buildingsOpacity' || key === 'all') this.applyBuildings();
+    if (key === 'shadows') this.lighting.setShadows(S.shadows);
+    if (key === 'time3d') this.lastDayFraction = null;
     if (key === 'labels') { this.rebuildMarkers(); this.rebuildPins(); }
     if (key === 'sets' || key === 'cats') this.applyMarkerVisibility();
   }
@@ -289,7 +297,38 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     }
     for (const p of this.players.values()) p.label.quaternion.copy(this.camera.quaternion);
     this.fitLabels();
+    this.tickLighting();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // time of day: the server's (from stats) or a fixed one the visitor picked
+  tickLighting() {
+    const pick = layerState.time3d;
+    let frac = { noon: 0.5, morning: 0.3, evening: 0.72, night: 0.02 }[pick];
+    if (frac === undefined) frac = statsStore.data?.server?.dayFraction ?? 0.5;
+    if (this.lastDayFraction === null || Math.abs(frac - this.lastDayFraction) > 0.002) { this.lastDayFraction = frac; this.lighting.setTime(frac); }
+    this.lighting.update(this.camera, this.controls.target);
+    const t = performance.now() / 1000;
+    this.waterNormals.offset.set((t * 0.012) % 1, (t * 0.009) % 1);
+  }
+
+  // Tileable normal map for the water: a few summed sine ripples, encoded as a tangent-space normal.
+  waterNormalTexture() {
+    const S = 256, c = document.createElement('canvas'); c.width = c.height = S;
+    const ctx = c.getContext('2d'), img = ctx.createImageData(S, S), d = img.data;
+    const waves = [[3, 1, 1.0], [-2, 4, 0.7], [5, -3, 0.5], [1, 7, 0.35], [-6, -2, 0.3]];
+    const h = (x, y) => { let v = 0; for (const [a, b, w] of waves) v += w * Math.sin(2 * Math.PI * (a * x + b * y) / S); return v; };
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        const dx = (h(x + 1, y) - h(x - 1, y)) * 0.5, dy = (h(x, y + 1) - h(x, y - 1)) * 0.5;
+        const nx = -dx * 0.9, ny = -dy * 0.9, nz = 1, len = Math.hypot(nx, ny, nz);
+        const o = (y * S + x) * 4;
+        d[o] = Math.round((nx / len * 0.5 + 0.5) * 255); d[o + 1] = Math.round((ny / len * 0.5 + 0.5) * 255); d[o + 2] = Math.round((nz / len * 0.5 + 0.5) * 255); d[o + 3] = 255;
+      }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(26000 / 40, 26000 / 40); t.anisotropy = 4;
+    return t;
   }
 
   // Labels keep a readable on-screen size (about 26 px tall) whatever the camera distance.
@@ -425,6 +464,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     geo.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     const mat = this.groundMaterial({ map: tex, roughness: 0.95, metalness: 0 });
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true; mesh.castShadow = true;
     mesh.position.set(minX + span / 2, 0, -(maxZ - span / 2));
     mesh.renderOrder = z;
     entry.mesh = mesh; entry.ready = true;
@@ -511,6 +551,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
       if (parts) {
         for (const part of parts) {
           const im = new THREE.InstancedMesh(part.geometry, cat === 'piece' ? part.material.clone() : part.material, list.length);
+          im.castShadow = true; im.receiveShadow = true;
           im.userData.cat = cat;
           list.forEach((o, i) => im.setMatrixAt(i, place(o)));
           im.instanceMatrix.needsUpdate = true;
@@ -531,6 +572,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
         const center = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2];
         off.compose(new THREE.Vector3(center[0], center[1], center[2]), new THREE.Quaternion(), new THREE.Vector3(size[0], size[1], size[2]));
         const im = new THREE.InstancedMesh(this.canopyGeometry(), this.canopyMaterial(info), list.length);
+        im.castShadow = true; im.receiveShadow = true;
         im.userData.cat = cat;
         list.forEach((o, i) => { out.multiplyMatrices(place(o), off); im.setMatrixAt(i, out); });
         im.instanceMatrix.needsUpdate = true;
@@ -562,6 +604,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     const q = new THREE.Quaternion(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), mtx = new THREE.Matrix4();
     for (const [m, list] of byMat) {
       const mesh = new THREE.InstancedMesh(this.box, this.material(materialColors[m] || '#a07446', 0.85).clone(), list.length);
+      mesh.castShadow = true; mesh.receiveShadow = true;
       mesh.userData.cat = 'piece';
       list.forEach((p, i) => {
         const [x, z, y, yaw, sx, sz, h] = p;
@@ -605,6 +648,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     for (const [shape, list] of byShape) {
       const geo = this.geoms[shape];
       const mesh = new THREE.InstancedMesh(geo, this.material('#ffffff', 0.9, true), list.length);
+      mesh.castShadow = true; mesh.receiveShadow = true;
       list.forEach((p, i) => {
         const [r, hgt, color] = VEG[p.kind];
         const rr = r * p.size, hh = hgt * p.size;
@@ -623,6 +667,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     }
     if (trunks.length) {
       const mesh = new THREE.InstancedMesh(this.geoms.trunk, this.material('#5a4030', 0.95), trunks.length);
+      mesh.castShadow = true;
       trunks.forEach(([p, h, r], i) => {
         pos.set(p.x, p.y + h / 2, -p.z); scl.set(Math.max(0.3, r * 0.22), h, Math.max(0.3, r * 0.22)); q.identity();
         mtx.compose(pos, q, scl); mesh.setMatrixAt(i, mtx);
@@ -755,6 +800,7 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
       let e = this.players.get(p.id);
       if (!e) {
         const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 1.0, 4, 8), this.material('#6fb7ff', 0.6));
+        body.castShadow = true;
         const label = makeLabel(p.name, '#ffffff', 1.4);
         label.position.y = 2.6;
         const g = new THREE.Group(); g.add(body); g.add(label);
@@ -840,7 +886,7 @@ function makeLabel(text, color, scale = 1) {
   ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(text, 32, 25);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, sizeAttenuation: true, transparent: true }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, sizeAttenuation: true, transparent: true, toneMapped: false }));
   sprite.aspect = w / 48;
   sprite.scale.set(sprite.aspect * 6 * scale, 6 * scale, 1);
   sprite.renderOrder = 999;
