@@ -66,6 +66,7 @@ namespace WebMap
         public static bool EXPORT_MODELS = true;
         public static string OBJECT_CATEGORIES = "piece,other,rock,bush,tree";
         public static bool USE_TEXTURES = true;
+        public static bool EXTRACT_MESHES = true;
         public static int TEXTURE_MAX_SIZE = 512;
         public static int MODEL_EXPORT_MS_PER_FRAME = 6;
 
@@ -248,6 +249,12 @@ namespace WebMap
                 "Texture the 3D models. The mod reads the textures its models need out of the game's own asset "
                 + "files on a background thread (a minute or two on first start, once per game version). "
                 + "Off: flat material colours; existing texture files are ignored.").Value;
+
+            EXTRACT_MESHES = config.Bind("Models", "extract_meshes",
+                WebMapConfig.EXTRACT_MESHES,
+                "Read the meshes the engine keeps locked (most of them: carts, beehives, ruins, rocks...) out of the game's "
+                + "own asset files, so the 3D view shows the real shape instead of a box. Background thread, a few minutes "
+                + "on first start, once per game version. Off: locked meshes stay boxes.").Value;
 
             TEXTURE_MAX_SIZE = config.Bind("Models", "texture_max_size",
                 WebMapConfig.TEXTURE_MAX_SIZE,

@@ -84,8 +84,9 @@ minutes on one core). Then close-up tiles where players walked. Page works
 right away: missing tiles show the zoomed-out one blown up, swap in when
 done. Counter bottom-left: drawn / waiting.
 
-First start also exports the 3D models. ~300 prefabs, under a minute. Done
-once, kept forever. Log: `WebMap: models exported N (readable meshes R, ...)`.
+First start also exports the 3D models. A couple of thousand prefabs, a few
+minutes. Done once, kept forever. Log: `WebMap: models exported N (readable
+meshes R, ...)`.
 
 ### Textures
 
@@ -111,6 +112,34 @@ Doing it by hand, same job, plain Python 3, no packages:
 ```
 python3 tools/extract_textures.py <valheim_server_Data> <plugins>/WebMap/map_data/models
 ```
+
+### Meshes
+
+Same story for the shapes. The engine locks most meshes (about seven in
+eight: carts, beehives, ruins, rocks, furniture...). Ask it for the
+vertices and it says no. Old versions drew those as boxes, or left parts
+out: a cart with boxes but no cart. Now the mod reads the locked meshes out
+of the game files too, right after the textures, and draws the real thing.
+Once per game version, a few minutes. Log:
+
+```
+WebMap: extracting 1900 meshes from the game files in .../valheim_server_Data
+WebMap: 1880 of 1900 meshes extracted from 800 files in 180s, 20 not found
+WebMap: 1700 models to re-export with newly extracted meshes
+```
+
+Mesh files live in `map_data/models/meshes/`. Game data, same rules as
+textures: never in the repo, never in the zip, never served. Only the
+finished `.glb` models go to the browser. `extract_meshes = false` turns it
+off (locked meshes stay boxes). By hand:
+
+```
+python3 tools/extract_meshes.py <valheim_server_Data> <plugins>/WebMap/map_data/models
+python3 tools/extract_meshes.py <valheim_server_Data> --dump Cart,beehive   # look inside the game files
+```
+
+Still a box or a gap? The log names every mesh it could not find or decode.
+Send it in an issue.
 
 ### Server load
 
@@ -158,6 +187,7 @@ cuts that by four.
 | Discord | `discord_webhook`, `discord_invite_url` | | webhook for events |
 | Server | `webmap_url`, `max_pins_per_user` | | link shown in game, pin limit |
 | User | `web_pins` | true | let the web page place pins (right click / long press) |
+| Models | `extract_meshes` | true | read locked meshes out of the game files (else boxes) |
 | Server | `websocket_compression` | false | permessage-deflate on the live feed. Off: IIS ARR and some proxies drop every frame with it on |
 
 ### Your own markers

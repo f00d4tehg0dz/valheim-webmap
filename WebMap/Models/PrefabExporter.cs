@@ -25,10 +25,13 @@ namespace WebMap.Models
             public byte[] glb; public float[] bounds; public int triangles; public bool textured; public bool readable;
             public int renderers, unreadable, foliageSkipped;
             public List<string> wants = new List<string>();   // texture names the materials reference (present or not)
+            public List<string> meshWants = new List<string>();     // keys of locked meshes (MeshCache.Key) this prefab uses
+            public List<string> meshMissing = new List<string>();   // those with no cache file yet (drawn without that part)
             // canopy: the foliage the model does NOT carry, summarised for the viewer's billboard leaves
             public string category = "other"; public bool hasCanopy; public bool canopyLeafNamed; public float[] canopy = { 1e9f, 1e9f, 1e9f, -1e9f, -1e9f, -1e9f }; public string canopyTexture; public float[] canopyColor = { 0.35f, 0.55f, 0.25f };
         }
 
+        private static readonly string[] altColorProps = { "_BaseMap", "_BaseColorMap", "_Albedo", "_AlbedoMap", "_Diffuse", "_ColorMap", "_Tex" };
         private static readonly Dictionary<string, string> textureFiles = new Dictionary<string, string>();   // texture name -> file name, or null when not obtainable
 
         // File name for a texture by name: stable across restarts, so the same file can come from the
@@ -83,45 +86,82 @@ namespace WebMap.Models
                 if (mf == null || mf.sharedMesh == null) continue;
                 Mesh mesh = mf.sharedMesh;
                 res.renderers++;
-                if (!mesh.isReadable) { res.unreadable++; continue; }
 
-                Vector3[] verts; Vector3[] norms; Vector2[] uvs;
-                try { verts = mesh.vertices; norms = mesh.normals; uvs = mesh.uv; }
-                catch { res.unreadable++; continue; }
-                if (verts == null || verts.Length == 0) continue;
+                // geometry: from the engine when the mesh is readable, else from the mesh cache
+                // (MeshExtractor fills it from the game files); a locked mesh not cached yet is skipped
+                float[] pos, nrm = null, uv = null; int vcount; List<uint[]> subIdx = null;
+                bool readable = false;
+                try { readable = mesh.isReadable; } catch { }
+                if (readable)
+                {
+                    Vector3[] verts; Vector3[] norms; Vector2[] uvs;
+                    try { verts = mesh.vertices; norms = mesh.normals; uvs = mesh.uv; }
+                    catch { readable = false; verts = null; norms = null; uvs = null; }
+                    if (!readable || verts == null || verts.Length == 0) { res.unreadable++; continue; }
+                    vcount = verts.Length;
+                    pos = new float[vcount * 3];
+                    if (norms != null && norms.Length == vcount) nrm = new float[vcount * 3];
+                    if (uvs != null && uvs.Length == vcount) uv = new float[vcount * 2];
+                    for (int i = 0; i < vcount; i++)
+                    {
+                        pos[i * 3] = verts[i].x; pos[i * 3 + 1] = verts[i].y; pos[i * 3 + 2] = verts[i].z;
+                        if (nrm != null) { nrm[i * 3] = norms[i].x; nrm[i * 3 + 1] = norms[i].y; nrm[i * 3 + 2] = norms[i].z; }
+                        if (uv != null) { uv[i * 2] = uvs[i].x; uv[i * 2 + 1] = uvs[i].y; }
+                    }
+                }
+                else
+                {
+                    int vc = 0, subCount = 0, idx0 = 0;
+                    try { vc = mesh.vertexCount; subCount = mesh.subMeshCount; } catch { }
+                    try { idx0 = (int)mesh.GetIndexCount(0); } catch { }
+                    string key = string.IsNullOrEmpty(mesh.name) || vc <= 0 ? null : MeshCache.Key(mesh.name, vc, subCount, idx0);
+                    var cached = key != null ? MeshCache.Load(modelsDir, key) : null;
+                    if (key != null && !res.meshWants.Contains(key)) res.meshWants.Add(key);
+                    if (cached == null)
+                    {
+                        if (key != null && !res.meshMissing.Contains(key)) res.meshMissing.Add(key);
+                        res.unreadable++; continue;
+                    }
+                    pos = cached.positions; nrm = cached.normals; uv = cached.uvs; subIdx = cached.subMeshes; vcount = pos.Length / 3;
+                }
                 res.readable = true;
 
                 Matrix4x4 m = toRoot * t.localToWorldMatrix;
                 Matrix4x4 nm = m.inverse.transpose;
                 bool mirrored = m.determinant < 0;   // negative scale flips winding once more
-                float[] pos = new float[verts.Length * 3];
-                float[] nrm = norms != null && norms.Length == verts.Length ? new float[verts.Length * 3] : null;
-                float[] uv = uvs != null && uvs.Length == verts.Length ? new float[verts.Length * 2] : null;
-                for (int i = 0; i < verts.Length; i++)
+                for (int i = 0; i < vcount; i++)
                 {
-                    Vector3 v = m.MultiplyPoint3x4(verts[i]);
+                    Vector3 v = m.MultiplyPoint3x4(new Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]));
                     pos[i * 3] = v.x; pos[i * 3 + 1] = v.y; pos[i * 3 + 2] = -v.z;
                     if (nrm != null)
                     {
-                        Vector3 n = nm.MultiplyVector(norms[i]).normalized;
+                        Vector3 n = nm.MultiplyVector(new Vector3(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2])).normalized;
                         nrm[i * 3] = n.x; nrm[i * 3 + 1] = n.y; nrm[i * 3 + 2] = -n.z;
                     }
-                    if (uv != null) { uv[i * 2] = uvs[i].x; uv[i * 2 + 1] = 1f - uvs[i].y; }
+                    if (uv != null) uv[i * 2 + 1] = 1f - uv[i * 2 + 1];
                 }
 
                 Material[] mats = mr.sharedMaterials;
-                int subs = mesh.subMeshCount;
+                int subs = subIdx != null ? subIdx.Count : mesh.subMeshCount;
                 for (int s = 0; s < subs; s++)
                 {
-                    int[] idx;
-                    try { idx = mesh.GetTriangles(s); } catch { continue; }
-                    if (idx == null || idx.Length < 3) continue;
-                    uint[] indices = new uint[idx.Length];
-                    for (int i = 0; i + 2 < idx.Length; i += 3)
+                    uint[] raw;
+                    if (subIdx != null) raw = subIdx[s];
+                    else
+                    {
+                        int[] idx;
+                        try { idx = mesh.GetTriangles(s); } catch { continue; }
+                        if (idx == null) continue;
+                        raw = new uint[idx.Length];
+                        for (int i = 0; i < idx.Length; i++) raw[i] = (uint)idx[i];
+                    }
+                    if (raw == null || raw.Length < 3) continue;
+                    uint[] indices = new uint[raw.Length];
+                    for (int i = 0; i + 2 < raw.Length; i += 3)
                     {
                         // reverse winding for the handedness flip (and again for mirrored transforms)
-                        if (mirrored) { indices[i] = (uint)idx[i]; indices[i + 1] = (uint)idx[i + 1]; indices[i + 2] = (uint)idx[i + 2]; }
-                        else { indices[i] = (uint)idx[i + 2]; indices[i + 1] = (uint)idx[i + 1]; indices[i + 2] = (uint)idx[i]; }
+                        if (mirrored) { indices[i] = raw[i]; indices[i + 1] = raw[i + 1]; indices[i + 2] = raw[i + 2]; }
+                        else { indices[i] = raw[i + 2]; indices[i + 1] = raw[i + 1]; indices[i + 2] = raw[i]; }
                     }
                     var prim = new GlbWriter.Primitive { positions = pos, normals = nrm, uvs = uv, indices = indices };
                     Material mat = mats != null && s < mats.Length ? mats[s] : (mats != null && mats.Length > 0 ? mats[0] : null);
@@ -152,7 +192,7 @@ namespace WebMap.Models
                         continue;
                     }
                     writer.Add(prim);
-                    tris += idx.Length / 3;
+                    tris += raw.Length / 3;
                 }
             }
 
@@ -219,6 +259,12 @@ namespace WebMap.Models
         {
             Texture2D tex = null;
             try { tex = mat.mainTexture as Texture2D; } catch { }
+            if (tex == null)
+            {
+                // shaders that keep their colour map under another name
+                foreach (var prop in altColorProps)
+                    try { if (mat.HasProperty(prop)) { tex = mat.GetTexture(prop) as Texture2D; if (tex != null) break; } } catch { }
+            }
             if (tex == null || string.IsNullOrEmpty(tex.name)) return null;
             string name = tex.name;
             if (!res.wants.Contains(name)) res.wants.Add(name);

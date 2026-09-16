@@ -108,6 +108,17 @@ as compact binary for 3D fallback path.
   dir. Once per game version; names not found are not retried. `ModelStore`
   re-exports models whose textures appeared.
   `/api/reexport` forces all. Leaf textures feed the canopy billboards.
+* Meshes: the engine locks most meshes too (`Mesh.isReadable` false, about
+  seven in eight). Exporter keys each locked mesh by name + vertex count +
+  sub-mesh count + first index count (`mw`/`mm` in the index; a locked mesh
+  still reports those) and reads it from `map_data/models/meshes/*.bin`
+  (`Models/MeshCache`, own little format) when present. `Models/MeshExtractor`
+  fills that cache from the game files after textures: `SerializedFile.ReadMesh`
+  (generic type-tree reader) then `Unity/MeshDecoder` unpacks vertex streams
+  (float/half/normalised formats, 16-byte aligned streams, `.resS` streamed
+  data) or packed-bit compressed meshes. `ModelStore.RescanMeshes` re-exports
+  models whose missing meshes appeared. `tools/extract_meshes.py` is the same
+  in Python, with `--dump` to inspect what the files hold.
 * `Models/ModelStore` owns `map_data/models/` and `index.json`. Sweep
   requests prefab first time it sees it. `Pump()` exports few per frame
   within `export_ms_per_frame`. `/data/prefabs.json` tells browser what

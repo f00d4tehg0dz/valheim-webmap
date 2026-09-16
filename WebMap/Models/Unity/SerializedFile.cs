@@ -150,6 +150,105 @@ namespace WebMap.Models.Unity
             return tex;
         }
 
+        // A Mesh object's fields, as the file stores them (vertex streams still packed).
+        public sealed class MeshData
+        {
+            public string Name; public int VertexCount; public int IndexFormat; public int MeshCompression;
+            public byte[] IndexBuffer; public byte[] VertexBytes;
+            public List<Dictionary<string, object>> SubMeshes = new List<Dictionary<string, object>>();
+            public List<Dictionary<string, object>> Channels = new List<Dictionary<string, object>>();
+            public Dictionary<string, object> Compressed;
+            public string StreamPath; public long StreamOffset; public int StreamSize;
+        }
+
+        // Reads a Mesh (class 43) through its type tree; null without a type tree.
+        public MeshData ReadMesh(ObjectInfo o)
+        {
+            var t = Types[o.TypeIndex];
+            if (t.Nodes == null) return null;
+            var r = new LeReader(data, (int)o.Start);
+            var d = ReadAny(r, t.Nodes, 0) as Dictionary<string, object>;
+            if (d == null) return null;
+            var m = new MeshData { Name = d.TryGetValue("m_Name", out object nm) ? nm as string : null };
+            if (d.TryGetValue("m_SubMeshes", out object sm) && sm is List<object> sl) foreach (var x in sl) if (x is Dictionary<string, object> sd) m.SubMeshes.Add(sd);
+            m.IndexFormat = AsInt(d, "m_IndexFormat");
+            m.MeshCompression = AsInt(d, "m_MeshCompression");
+            m.IndexBuffer = d.TryGetValue("m_IndexBuffer", out object ib) ? ib as byte[] : null;
+            if (d.TryGetValue("m_VertexData", out object vdo) && vdo is Dictionary<string, object> vd)
+            {
+                m.VertexCount = AsInt(vd, "m_VertexCount");
+                if (vd.TryGetValue("m_Channels", out object ch) && ch is List<object> cl) foreach (var x in cl) if (x is Dictionary<string, object> cd) m.Channels.Add(cd);
+                m.VertexBytes = vd.TryGetValue("m_DataSize", out object ds) ? ds as byte[] : null;
+            }
+            if (d.TryGetValue("m_CompressedMesh", out object cm)) m.Compressed = cm as Dictionary<string, object>;
+            if (d.TryGetValue("m_StreamData", out object sdo) && sdo is Dictionary<string, object> st)
+            {
+                m.StreamOffset = AsLong(st, "offset"); m.StreamSize = AsInt(st, "size");
+                m.StreamPath = st.TryGetValue("path", out object sp) ? sp as string : null;
+            }
+            return m;
+        }
+
+        public static int AsInt(Dictionary<string, object> d, string k) => d != null && d.TryGetValue(k, out object v) ? (int)ToLong(v) : 0;
+        public static long AsLong(Dictionary<string, object> d, string k) => d != null && d.TryGetValue(k, out object v) ? ToLong(v) : 0;
+        public static float AsFloat(Dictionary<string, object> d, string k) => d != null && d.TryGetValue(k, out object v) ? (v is float f ? f : v is double db ? (float)db : ToLong(v)) : 0f;
+        private static long ToLong(object v)
+        {
+            switch (v)
+            {
+                case int i: return i; case uint u: return u; case byte b: return b; case sbyte sb: return sb;
+                case short sh: return sh; case ushort us: return us; case long l: return l; case ulong ul: return (long)ul;
+                case bool bo: return bo ? 1 : 0; case float f: return (long)f; case double d: return (long)d;
+                default: return 0;
+            }
+        }
+
+        // Generic type-tree deserializer: compound -> Dictionary, array -> List (byte[] for byte arrays),
+        // string -> string, leaf -> boxed primitive. Follows the same alignment rules as SkipValue.
+        private static object ReadAny(LeReader r, TypeNode[] nodes, int i)
+        {
+            var n = nodes[i]; int end = Subtree(nodes, i);
+            if (n.Type == "string") return ReadString(r);
+            if (n.Type == "TypelessData") { int len = r.I32(); return r.Bytes(len); }
+            if (end > i + 1 && nodes[i + 1].Type == "Array")
+            {
+                int len = r.I32(); int elem = i + 3; var arr = nodes[i + 1];
+                object result;
+                if (elem >= end || len < 0) result = new List<object>();
+                else if (nodes[elem].Size == 1 && Subtree(nodes, elem) == end) result = r.Bytes(len);
+                else
+                {
+                    var list = new List<object>(Math.Min(len, 1 << 16));
+                    for (int k = 0; k < len; k++) { list.Add(ReadAny(r, nodes, elem)); if ((nodes[elem].Meta & 0x4000) != 0) r.Align(4); }
+                    result = list;
+                }
+                if ((arr.Meta & 0x4000) != 0) r.Align(4);
+                return result;
+            }
+            if (end == i + 1)
+            {
+                switch (n.Type)
+                {
+                    case "int": case "SInt32": return r.I32();
+                    case "unsigned int": case "UInt32": return r.U32();
+                    case "float": return r.F32();
+                    case "double": { long bits = r.I64(); return BitConverter.Int64BitsToDouble(bits); }
+                    case "bool": return r.U8() != 0;
+                    case "UInt8": case "char": return r.U8();
+                    case "SInt8": return (sbyte)r.U8();
+                    case "SInt16": case "short": return r.I16();
+                    case "UInt16": case "unsigned short": return r.U16();
+                    case "SInt64": case "long long": return r.I64();
+                    case "UInt64": case "unsigned long long": case "FileSize": return (ulong)r.I64();
+                    default: r.Skip(n.Size > 0 ? n.Size : 0); return null;
+                }
+            }
+            var dict = new Dictionary<string, object>();
+            int c = i + 1;
+            while (c < end) { dict[nodes[c].Name] = ReadAny(r, nodes, c); if ((nodes[c].Meta & 0x4000) != 0) r.Align(4); c = Subtree(nodes, c); }
+            return dict;
+        }
+
         private static int Subtree(TypeNode[] nodes, int i) { int j = i + 1; while (j < nodes.Length && nodes[j].Level > nodes[i].Level) j++; return j; }
 
         private static string ReadString(LeReader r) { int len = r.I32(); string s = Encoding.UTF8.GetString(r.Bytes(len)); r.Align(4); return s; }
@@ -184,6 +283,7 @@ namespace WebMap.Models.Unity
         public ushort U16() { ushort v = (ushort)(b[Pos] | (b[Pos + 1] << 8)); Pos += 2; return v; }
         public int I32() { int v = b[Pos] | (b[Pos + 1] << 8) | (b[Pos + 2] << 16) | (b[Pos + 3] << 24); Pos += 4; return v; }
         public uint U32() => (uint)I32();
+        public float F32() { float v = BitConverter.ToSingle(b, Pos); Pos += 4; return v; }
         public long I64() { long lo = U32(); long hi = U32(); return lo | (hi << 32); }
         public void Skip(int n) { Pos += n; }
         public void Align(int a) { Pos = (Pos + a - 1) / a * a; }

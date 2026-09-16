@@ -18,12 +18,14 @@ namespace WebMap.Models
     // have a model and which need a box.
     internal static class ModelStore
     {
-        public const int FORMAT = 4;   // 4: bark/trunk materials are geometry again, only leaves become canopy billboards
+        public const int FORMAT = 5;   // 5: locked meshes come from the mesh cache; index records which ones each prefab needs
 
         public sealed class Info
         {
             public int hash; public string name; public string cat; public bool ok; public int tris; public bool tex; public float[] bounds = new float[6]; public int renderers, unreadable;
             public List<string> wants = new List<string>();   // texture names its materials reference
+            public List<string> meshWants = new List<string>();     // locked meshes it uses from the mesh cache (MeshCache.Key)
+            public List<string> meshMissing = new List<string>();   // those the cache did not have when it was exported
             public float[] canopy;            // foliage bounds in model space (x0,y0,z0,x1,y1,z1), or null
             public string canopyTex;          // leaf texture file, or null
             public float[] canopyColor;       // leaf tint 0..1
@@ -39,6 +41,7 @@ namespace WebMap.Models
         private static bool indexDirty;
         private static int idleTicks;
         private static volatile bool extractDone;
+        private static volatile bool meshDone;
         public static int Exported { get; private set; }
         public static int Readable { get; private set; }
         public static int Unreadable { get; private set; }
@@ -71,6 +74,11 @@ namespace WebMap.Models
                                 if (b != null && b.Count == 6) for (int i = 0; i < 6; i++) info.bounds[i] = (float)(b[i] is double x ? x : 0);
                                 var w = JsonParser.Arr(d, "w");
                                 if (w != null) foreach (var o in w) if (o is string ws) info.wants.Add(ws);
+                                var mw = JsonParser.Arr(d, "mw");
+                                if (mw != null) foreach (var o in mw) if (o is string ms) info.meshWants.Add(ms);
+                                var mm = JsonParser.Arr(d, "mm");
+                                if (mm != null) foreach (var o in mm) if (o is string ms) info.meshMissing.Add(ms);
+                                info.renderers = (int)JsonParser.Num(d, "r"); info.unreadable = (int)JsonParser.Num(d, "u");
                                 var k = JsonParser.Arr(d, "k");
                                 if (k != null && k.Count == 6) { info.canopy = new float[6]; for (int i = 0; i < 6; i++) info.canopy[i] = (float)(k[i] is double x ? x : 0); }
                                 info.canopyTex = JsonParser.Str(d, "kt", null);
@@ -84,12 +92,38 @@ namespace WebMap.Models
             }
             catch (Exception e) { ZLog.LogWarning("WebMap: models/index.json not readable: " + e.Message); }
             foreach (var i in index.Values) if (i.ok) Readable++; else if (i.renderers > 0) Unreadable++;
-            // textures extracted since the last run: re-export the models that use them
-            int again = RescanTextures();
+            // textures and meshes extracted since the last run: re-export the models that use them
+            int again = RescanTextures() + RescanMeshes();
             WriteTexturesJson();
             Rebuild();
-            ZLog.Log($"WebMap: model library at {root}: {index.Count} prefabs known" + (again > 0 ? $", {again} to re-export with newly extracted textures" : ""));
+            ZLog.Log($"WebMap: model library at {root}: {index.Count} prefabs known" + (again > 0 ? $", {again} to re-export with newly extracted textures or meshes" : ""));
         }
+
+        // Models with a locked mesh whose cache file now exists (the mesh extractor ran): re-export them.
+        public static int RescanMeshes()
+        {
+            int again = 0;
+            foreach (var i in index.Values)
+            {
+                if (i.meshMissing.Count == 0) continue;
+                bool needs = false;
+                foreach (var k in i.meshMissing) if (MeshCache.Exists(root, k)) { needs = true; break; }
+                if (needs) { Request(i.hash, i.cat, force: true); again++; }
+            }
+            return again;
+        }
+
+        // mesh keys the models need that have no cache file yet
+        public static List<string> MissingMeshes()
+        {
+            var seen = new HashSet<string>(); var list = new List<string>();
+            foreach (var i in index.Values)
+                foreach (var k in i.meshMissing)
+                    if (seen.Add(k) && !MeshCache.Exists(root, k)) list.Add(k);
+            return list;
+        }
+        public static int MeshesWanted { get; private set; }
+        public static int MeshesPresent { get; private set; }
 
         // Models that still lack a texture one of their materials wants, when that file now exists
         // (the extractor ran while the server was up): queue them for re-export. Returns the count.
@@ -196,14 +230,21 @@ namespace WebMap.Models
                     // game files on a background thread, then re-export the models that use them
                     int tick = idleTicks++;
                     if (extractDone) { extractDone = false; int n = RescanTextures(); WriteTexturesJson(); Rebuild(); ZLog.Log($"WebMap: {n} models to re-export with newly extracted textures"); }
+                    else if (meshDone) { meshDone = false; int n = RescanMeshes(); Rebuild(); ZLog.Log($"WebMap: {n} models to re-export with newly extracted meshes"); }
                     else if (tick == 5 || tick % 60 == 59)
                     {
-                        int again = RescanTextures();
-                        if (again > 0) ZLog.Log($"WebMap: {again} models to re-export with newly extracted textures");
-                        else if (WebMapConfig.USE_TEXTURES && !TextureExtractor.Running)
+                        int again = RescanTextures() + RescanMeshes();
+                        if (again > 0) ZLog.Log($"WebMap: {again} models to re-export with newly extracted textures or meshes");
+                        else if (WebMapConfig.USE_TEXTURES && !TextureExtractor.Running && !MeshExtractor.Running)
                         {
                             var missing = MissingTextures();
                             if (missing.Count > 0) TextureExtractor.Start(missing, root, Math.Max(64, WebMapConfig.TEXTURE_MAX_SIZE), () => extractDone = true);
+                        }
+                        // locked meshes next, once textures are settled
+                        if (WebMapConfig.EXTRACT_MESHES && !TextureExtractor.Running && !MeshExtractor.Running)
+                        {
+                            var missing = MissingMeshes();
+                            if (missing.Count > 0) MeshExtractor.Start(missing, root, () => meshDone = true);
                         }
                     }
                     yield return new WaitForSeconds(1f);
@@ -240,7 +281,7 @@ namespace WebMap.Models
                 {
                     var fallback = FallbackColor(go.name, cat);
                     var r = PrefabExporter.Export(go, root, fallback, cat);
-                    info.renderers = r.renderers; info.unreadable = r.unreadable; info.wants = r.wants;
+                    info.renderers = r.renderers; info.unreadable = r.unreadable; info.wants = r.wants; info.meshWants = r.meshWants; info.meshMissing = r.meshMissing;
                     if (r.hasCanopy) { info.canopy = r.canopy; info.canopyTex = r.canopyTexture; info.canopyColor = r.canopyColor; }
                     if (r.glb != null)
                     {
@@ -314,7 +355,14 @@ namespace WebMap.Models
         {
             j.Key(i.hash.ToString(CultureInfo.InvariantCulture)).BeginObject();
             j.Prop("n", i.name).Prop("c", i.cat).Prop("m", i.ok).Prop("t", i.tris).Prop("x", i.tex);
-            if (full) { j.Prop("r", i.renderers).Prop("u", i.unreadable); j.Key("w").BeginArray(); foreach (var w in i.wants) j.Value(w); j.End(); }
+            if (full)
+            {
+                j.Prop("r", i.renderers).Prop("u", i.unreadable);
+                j.Key("w").BeginArray(); foreach (var w in i.wants) j.Value(w); j.End();
+                if (i.meshWants.Count > 0) { j.Key("mw").BeginArray(); foreach (var w in i.meshWants) j.Value(w); j.End(); }
+                if (i.meshMissing.Count > 0) { j.Key("mm").BeginArray(); foreach (var w in i.meshMissing) j.Value(w); j.End(); }
+            }
+            else if (i.unreadable > 0) j.Prop("u", i.unreadable);   // the page can say "part of this model is missing"
             j.Key("b").BeginArray(); foreach (float v in i.bounds) j.Value(v, 3); j.End();
             if (i.canopy != null)
             {
@@ -328,9 +376,17 @@ namespace WebMap.Models
         private static void Rebuild()
         {
             rev++;
+            try
+            {
+                var seen = new HashSet<string>(); int present = 0;
+                foreach (var i in index.Values) foreach (var k in i.meshWants) if (seen.Add(k) && MeshCache.Exists(root, k)) present++;
+                MeshesWanted = seen.Count; MeshesPresent = present;
+            }
+            catch { }
             var j = new JsonWriter(index.Count * 100 + 64);
             j.BeginObject().Prop("rev", rev).Prop("format", FORMAT).Prop("exported", Exported).Prop("readable", Readable).Prop("unreadable", Unreadable).Prop("queued", QueueLength)
-             .Prop("texturesWanted", TexturesWanted).Prop("texturesPresent", TexturesPresent).Prop("extracting", TextureExtractor.Running).Prop("extractReport", TextureExtractor.LastReport);
+             .Prop("texturesWanted", TexturesWanted).Prop("texturesPresent", TexturesPresent).Prop("extracting", TextureExtractor.Running).Prop("extractReport", TextureExtractor.LastReport)
+             .Prop("meshesWanted", MeshesWanted).Prop("meshesPresent", MeshesPresent).Prop("extractingMeshes", MeshExtractor.Running).Prop("meshReport", MeshExtractor.LastReport);
             j.Key("prefabs").BeginObject();
             foreach (var kv in index) WriteInfo(j, kv.Value, full: false);
             j.End().End();

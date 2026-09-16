@@ -65,7 +65,7 @@ namespace WebMap.Models
         }
 
         // bundles first, biggest first (the world's assets live there), then the plain .assets files
-        private static IEnumerable<string> AssetFiles(string dataDir)
+        internal static IEnumerable<string> AssetFiles(string dataDir)
         {
             var list = new List<string>();
             string bundles = Path.Combine(Path.Combine(Path.Combine(dataDir, "StreamingAssets"), "SoftRef"), "Bundles");
@@ -81,7 +81,7 @@ namespace WebMap.Models
             return list;
         }
 
-        private static bool IsBundle(string path)
+        internal static bool IsBundle(string path)
         {
             try
             {
