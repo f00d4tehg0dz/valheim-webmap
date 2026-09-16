@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.1.2
+## 2.1.3
 
 * Every model, not one in eight. The engine locks most meshes, so the 3D view drew boxes (a cart with its boxes but no cart, a bare beehive). The mod now reads locked meshes out of the game files like it already did textures: `extract_meshes` config, `map_data/models/meshes/`, `tools/extract_meshes.py` by hand. Model library format 5: everything is exported again once.
 * Materials that keep their colour map under `_BaseMap` and friends get their texture too.
