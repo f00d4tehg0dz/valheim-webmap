@@ -71,7 +71,7 @@ New-Item -ItemType Directory -Force $pkg | Out-Null
 Copy-Item WebMap\bin\Release\WebMap.dll, WebMap\bin\Release\websocket-sharp.dll $pkg
 Copy-Item WebMap\web $pkg\web -Recurse
 New-Item -ItemType Directory -Force $pkg\tools | Out-Null
-Copy-Item tools\extract_textures.py $pkg\tools\
+Copy-Item tools\extract_textures.py, tools\extract_meshes.py $pkg\tools\
 Copy-Item manifest.json, README.md, CHANGELOG.md, icon.png, LICENSE dist\pkg\
 if (-not $SkipPackage) {
   $zipOut = "dist\ValheimWebMap-$version.zip"

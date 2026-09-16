@@ -57,7 +57,7 @@ PKG=dist/pkg/plugins/WebMap
 mkdir -p "$PKG"
 cp WebMap/bin/Release/WebMap.dll WebMap/bin/Release/websocket-sharp.dll "$PKG/"
 cp -r WebMap/web "$PKG/web"
-mkdir -p "$PKG/tools" && cp tools/extract_textures.py "$PKG/tools/"
+mkdir -p "$PKG/tools" && cp tools/extract_textures.py tools/extract_meshes.py "$PKG/tools/"
 cp manifest.json README.md CHANGELOG.md icon.png LICENSE dist/pkg/
 (cd dist/pkg && zip -qr "../ValheimWebMap-$V.zip" . -x '.*')
 echo "packaged dist/ValheimWebMap-$V.zip"
