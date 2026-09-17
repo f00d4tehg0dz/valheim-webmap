@@ -48,6 +48,7 @@ class App {
     // right click (long press on a phone) places a pin, unless the server turned web pins off
     this.map.on('contextmenu', (e) => { if (this.config?.web_pins !== false) this.layers.markers.openPinEditor(e.latlng); });
     this.layers.players = new PlayersLayer(this.map);
+    this.layers.players.onFollow = (id) => { if (this.view3d) this.view3d.follow(id); };
     this.sidebar = new Sidebar(this);
     this.layers.players.onChange((ps) => { this.sidebar.renderPlayers(ps); if (this.view3d) this.view3d.setPlayers(ps); });
     this.bindUi();
@@ -111,12 +112,31 @@ class App {
       items.forEach((b, k) => b.classList.toggle('active', k === i));
     });
     document.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT') return;
-      if (e.key === '/') { e.preventDefault(); search.focus(); }
-      if (e.key === 'Escape') { this.layers.players.follow(null); }
-      if (e.key.toLowerCase() === 'f') this.layers.players.follow(null);
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (k === '/') { e.preventDefault(); search.focus(); return; }
+      if (k === 'Escape') { this.layers.players.follow(null); this.playerCard?.hide(); return; }
+      if (k === 'Home') { e.preventDefault(); this.goToSpawn(true); return; }
+      if (k === 'm') { this.setMode(this.mode === '3d' ? '2d' : '3d'); return; }
+      if (k === 'l') { this.toggleSidebar(); return; }
+      if (k === 'p') { if (this.layers.players.following) this.layers.players.follow(null); else this.cyclePlayer(); return; }
+      if (this.mode === '3d') return;   // the 3D view polls its own keys
+      // 2D: WASD pans (arrows and +/- are Leaflet's own), Shift is fast
+      const step = e.shiftKey ? 300 : 100;
+      const pan = { w: [0, -step], s: [0, step], a: [-step, 0], d: [step, 0] }[k];
+      if (pan) { e.preventDefault(); this.layers.players.follow(null); this.map.panBy(pan, { animate: true, duration: 0.15 }); }
     });
     window.addEventListener('hashchange', () => this.applyHash());
+  }
+
+  // P: follow the next player on the list (2D and 3D)
+  cyclePlayer() {
+    const PL = this.layers.players, list = PL.players.filter((p) => p.x !== undefined);
+    if (list.length === 0) return;
+    const i = list.findIndex((p) => p.id === this.lastCycled);
+    const p = list[(i + 1) % list.length];
+    this.lastCycled = p.id;
+    PL.follow(p.id);
   }
 
   toggleSidebar(show) {
@@ -235,6 +255,8 @@ class App {
     if (this.view3d) return this.view3d;
     const { View3D } = await import('./view3d.js');
     this.view3d = new View3D($('#gl'), this.config);
+    this.view3d.onUnfollow = () => this.layers.players.follow(null);
+    this.view3d.onHome = () => this.goToSpawn(true);
     this.view3d.setPlayers(this.layers.players.players);
     this.view3d.setPins(this.layers.markers.pinList());
     this.layers.markers.onPins((pins) => this.view3d.setPins(pins));
@@ -254,6 +276,7 @@ class App {
         $('#map').style.visibility = 'hidden';
         this.view3d.show(c.x, c.z, this.map.getZoom());
         this.mode = '3d';
+        if (this.layers.players.following) this.view3d.follow(this.layers.players.following);
         this.root.dataset.mode = '3d';
         btn.innerHTML = '<svg><use href="#i-2d"/></svg><span>2D</span>';
         btn.title = 'Back to 2D';

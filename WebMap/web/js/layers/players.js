@@ -74,6 +74,7 @@ export class PlayersLayer {
 
   follow(id) {
     this.following = id;
+    if (this.onFollow) this.onFollow(id);
     for (const p of this.players) { const mk = this.markers.get(p.id); if (mk) mk.setIcon(this.icon(p)); }
     const p = this.players.find((q) => q.id === id);
     if (p && p.x !== undefined) this.map.setView(toLatLng(p.x, p.z), Math.max(this.map.getZoom(), 6));

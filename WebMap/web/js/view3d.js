@@ -52,6 +52,7 @@ export class View3D {
     this.controls.maxDistance = 7000;
     this.controls.screenSpacePanning = false;
     this.controls.addEventListener('change', () => this.scheduleUpdate());
+    this.controls.addEventListener('start', () => { if (this.followId !== null && this.onUnfollow) this.onUnfollow(); });
 
     // sky dome, sun, moon, fog colour and an environment map, all from the game's time of day
     this.lighting = new Lighting(this.scene, this.renderer);
@@ -95,6 +96,8 @@ export class View3D {
     this.pins = [];
     layerState.onChange((key) => this.applyLayerState(key));
     this.players = new Map();
+    this.followId = null;         // player the camera tracks (set by the players layer)
+    this.keys = new Set();        // keys held down, polled each frame
     this.loader = new THREE.TextureLoader();
     this.running = false;
     this.updateTimer = null;
@@ -130,6 +133,65 @@ export class View3D {
       const hit = this.raycaster.intersectObjects(bodies, false)[0];
       if (hit) this.onPlayerClick(hit.object.userData.playerId, e.clientX, e.clientY);
     });
+    // keyboard: WASD / arrows pan, Q E turn, R F tilt, + - (or Z X) zoom, Shift is fast. Polled in loop().
+    document.addEventListener('keydown', (e) => {
+      if (!this.running || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (KEYS.has(k)) { this.keys.add(k); e.preventDefault(); }
+    });
+    document.addEventListener('keyup', (e) => { this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
+    window.addEventListener('blur', () => this.keys.clear());
+    // double click: centre on that spot
+    canvas.addEventListener('dblclick', (e) => {
+      const r = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      this.raycaster.setFromCamera(ndc, this.camera);
+      const ground = [...this.terrain.values()].filter((t) => t.mesh).map((t) => t.mesh);
+      const hit = this.raycaster.intersectObjects(ground, false)[0];
+      if (hit) { this.follow(null); this.lookAt(hit.point.x, -hit.point.z); }
+    });
+  }
+
+  // camera tracks a player (null stops); the players layer calls this so 2D and 3D stay in step
+  follow(id) {
+    this.followId = id;
+    if (id === null) return;
+    const e = this.players.get(id);
+    if (e) this.lookAt(e.group.position.x, -e.group.position.z);
+  }
+
+  // keyboard movement, called every frame. Speeds scale with the camera distance so a key press
+  // moves about the same amount on screen whether you are zoomed in or out.
+  handleKeys(dt) {
+    if (this.keys.size === 0) return;
+    const K = this.keys, fast = K.has('Shift') ? 3 : 1;
+    const t = this.controls.target, cam = this.camera.position;
+    const off = _v.copy(cam).sub(t);
+    const dist = off.length();
+    const speed = dist * 0.9 * fast * dt;
+    let fwd = new THREE.Vector3(-off.x, 0, -off.z);
+    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1); else fwd.normalize();
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const move = new THREE.Vector3();
+    if (K.has('w') || K.has('ArrowUp')) move.add(fwd);
+    if (K.has('s') || K.has('ArrowDown')) move.sub(fwd);
+    if (K.has('d') || K.has('ArrowRight')) move.add(right);
+    if (K.has('a') || K.has('ArrowLeft')) move.sub(right);
+    if (move.lengthSq() > 0) { move.normalize().multiplyScalar(speed); t.add(move); cam.add(move); if (this.followId !== null) { this.follow(null); if (this.onUnfollow) this.onUnfollow(); } }
+    let yaw = 0, pitch = 0, zoom = 1;
+    if (K.has('q')) yaw += 1.6 * dt; if (K.has('e')) yaw -= 1.6 * dt;
+    if (K.has('r')) pitch -= 1.2 * dt; if (K.has('f')) pitch += 1.2 * dt;
+    if (K.has('+') || K.has('=') || K.has('z') || K.has('PageUp')) zoom *= Math.pow(0.35, dt * fast);
+    if (K.has('-') || K.has('_') || K.has('x') || K.has('PageDown')) zoom *= Math.pow(1 / 0.35, dt * fast);
+    if (yaw || pitch || zoom !== 1) {
+      const sph = new THREE.Spherical().setFromVector3(off);
+      sph.theta += yaw;
+      sph.phi = Math.min(this.controls.maxPolarAngle, Math.max(0.05, sph.phi + pitch));
+      sph.radius = Math.min(this.controls.maxDistance, Math.max(this.controls.minDistance, sph.radius * zoom));
+      cam.copy(t).add(off.setFromSpherical(sph));
+    }
+    if (K.has('Home')) { K.delete('Home'); if (this.onHome) this.onHome(); }
+    this.scheduleUpdate();
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -288,6 +350,8 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
   loop() {
     if (!this.running) return;
     requestAnimationFrame(() => this.loop());
+    const now = performance.now(), dt = Math.min(0.1, (now - (this.lastFrame || now)) / 1000); this.lastFrame = now;
+    this.handleKeys(dt);
     this.controls.update();
     // keep the target on the ground so orbiting feels anchored
     const h = this.heightAt(this.controls.target.x, -this.controls.target.z);
@@ -812,11 +876,30 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
       const y = p.y ?? this.heightAt(p.x, p.z) ?? this.waterLevel;
       e.group.position.set(p.x, y, -p.z);
       e.group.rotation.y = -(p.yaw || 0) * Math.PI / 180;
+      if (this.followId === p.id) this.glideTo(p.x, p.z);
     }
     for (const [id, e] of this.players) if (!seen.has(id)) { this.playerGroup.remove(e.group); this.players.delete(id); }
+    if (this.followId !== null && !seen.has(this.followId)) this.followId = null;
+  }
+
+  // move the camera target to (x, z) over a few frames, keeping the camera's offset (follow mode)
+  glideTo(x, z) {
+    this.glide = { x, z };
+    if (this.glideTimer) return;
+    const step = () => {
+      if (!this.glide || !this.running) { this.glideTimer = null; return; }
+      const t = this.controls.target, dx = this.glide.x - t.x, dz = -this.glide.z - t.z;
+      if (Math.abs(dx) < 0.05 && Math.abs(dz) < 0.05) { this.glide = null; this.glideTimer = null; return; }
+      const k = 0.12;
+      t.x += dx * k; t.z += dz * k; this.camera.position.x += dx * k; this.camera.position.z += dz * k;
+      this.scheduleUpdate();
+      this.glideTimer = requestAnimationFrame(step);
+    };
+    this.glideTimer = requestAnimationFrame(step);
   }
 }
 
+const KEYS = new Set(['w', 'a', 's', 'd', 'q', 'e', 'r', 'f', 'z', 'x', '+', '=', '-', '_', 'Shift', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home']);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 const IDENTITY = new THREE.Matrix4();
 const _v = new THREE.Vector3();

@@ -288,6 +288,30 @@ Server forgets its cached copies and every open browser reloads. Only the
 web files. A new DLL still needs a game restart. For dev work set
 `cache_server_files = false` and the server reads from disk every time.
 
+## Controls
+
+Mouse, 2D: drag to pan, wheel to zoom, right click to add a pin. 3D: drag
+to pan, right-drag (or two fingers) to orbit, wheel to zoom, double click to
+centre on a spot, click a player for the card.
+
+Keys, both views:
+
+| Key | Does |
+|---|---|
+| `W A S D`, arrows | move (`Shift` = fast) |
+| `Q` `E` | turn (3D) |
+| `R` `F` | tilt (3D) |
+| `Z` `X`, `+` `-` | zoom |
+| `P` | follow the next player; again to stop |
+| `M` | switch 2D / 3D |
+| `L` | layers panel |
+| `Home` | go to spawn |
+| `/` | search |
+| `Esc` | stop following, close card |
+
+Follow works in 3D too: the camera glides after the player, keeping your
+angle and distance. Drag or move and it lets go.
+
 ## Pins
 
 **From the web page.** Right click the map (long press on a phone). Pick a
