@@ -5,6 +5,20 @@ browser. Share `http://your_ip:3000`. Players install nothing. Server only.
 
 ![3D view of a player base](docs/screenshots/08-hero-3d.jpg)
 
+## What's new
+
+* **2.1.5** — Keyboard controls in 2D and 3D (WASD, Q E turn, Z X zoom, P
+  follow, M switch, Home spawn). Follow a player in 3D. Lighting has its
+  own spot in Layers.
+* **2.1.4** — Real sky in 3D: sun, moon, stars, dawn and dusk, shadows,
+  rippling water. Lit by the server's clock, or pick a time of day.
+* **2.1.3** — Every model drawn, not one in eight. Locked meshes (carts,
+  beehives, ruins, rocks) now come straight from the game files.
+* **2.1.1** — Pins from the web page (right click). Phone layout fixed. Web
+  app built into the DLL, so mod managers can't lose it. Fixes #1 #2 #3 #5.
+
+Full list in [CHANGELOG.md](CHANGELOG.md).
+
 ## What it does
 
 * **Big map, every metre.** One pixel is one metre. Seven zoom levels. Shows

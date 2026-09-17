@@ -1,6 +1,6 @@
 {
     "name": "ValheimWebMap",
-    "version_number": "2.1.4",
+    "version_number": "2.1.5",
     "website_url": "https://github.com/f00d4tehg0dz/valheim-webmap",
     "description": "Live web map for your dedicated server. 3D/2D view with the game's own models, fog of war, players, bases, portals, stats.",
     "dependencies": [
