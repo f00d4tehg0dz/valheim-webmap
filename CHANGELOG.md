@@ -2,6 +2,7 @@
 
 ## 2.1.5
 
+* Fix: a few box-only prefabs were re-exported every minute ("N models to re-export with newly extracted textures" forever), which also kept the texture extractor from starting for anything new.
 * Keyboard everywhere: WASD/arrows move, Q E turn, R F tilt, Z X zoom, Shift fast, P follow next player, M 2D/3D, L layers, Home spawn. Double click in 3D centres on that spot. README "Controls".
 * Follow works in 3D: camera glides after the player; drag, WASD or Esc lets go. Following carries over when you switch 2D/3D.
 * "Lighting (3D)" heading in Layers for time of day and shadows.

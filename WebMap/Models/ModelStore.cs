@@ -134,7 +134,8 @@ namespace WebMap.Models
             var missing = new HashSet<string>();
             foreach (var i in index.Values)
             {
-                if (i.wants.Count == 0) continue;
+                // a prefab with no geometry can never become textured: re-exporting it forever helps nobody
+                if (i.wants.Count == 0 || !i.ok) continue;
                 bool needs = false;
                 foreach (var w in i.wants)
                 {
