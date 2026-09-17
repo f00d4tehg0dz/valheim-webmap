@@ -310,7 +310,7 @@ namespace WebMap
                     if (!post) return false;
                     if (!Authorized(req)) return Text(e, "{\"error\":\"forbidden\"}", "application/json", nocache: true, status: 403);
                     int n = fileCache.Count;
-                    fileCache.Clear();
+                    fileCache.Clear(); stampedIndex = null; stampedFrom = null;
                     Reload();
                     ZLog.Log("WebMap: web files reloaded (" + n + " cached files dropped), browsers told to refresh");
                     return Text(e, "{\"dropped\":" + n + ",\"browsers\":" + (wsHost.Sessions.Count + wsLegacyHost.Sessions.Count) + "}", "application/json", nocache: true);
@@ -536,23 +536,13 @@ namespace WebMap
             string ext = Path.GetExtension(rel).TrimStart('.').ToLowerInvariant();
             if (!contentTypes.TryGetValue(ext, out string ctype)) { NotFound(res); return; }
 
-            if (!fileCache.TryGetValue(rel, out byte[] data))
-            {
-                string full = Path.GetFullPath(Path.Combine(publicRoot, rel.Replace('/', Path.DirectorySeparatorChar)));
-                if (full.StartsWith(publicRoot, StringComparison.Ordinal) && File.Exists(full))
-                {
-                    try { data = File.ReadAllBytes(full); }
-                    catch (Exception ex) { ZLog.LogError("WebMap: failed to read " + rel + ": " + ex.Message); NotFound(res); return; }
-                }
-                else
-                {
-                    data = EmbeddedWebFile(rel);     // no web folder on disk: the copy built into the DLL
-                    if (data == null) { NotFound(res); return; }
-                }
-                if (CACHE_SERVER_FILES) fileCache[rel] = data;
-            }
-            // vendored libraries never change between mod versions; everything else revalidates cheaply
-            string cache = rel.StartsWith("vendor/") ? "public, max-age=2592000, immutable" : "no-cache";
+            byte[] data = ReadWebFile(rel);
+            if (data == null) { NotFound(res); return; }
+            if (rel == "index.html") data = StampIndex(data);
+            // vendored libraries never change between mod versions. Everything else carries a content
+            // hash in its URL (see StampIndex), so it can be cached hard too: a new file is a new URL,
+            // and no proxy in between (Cloudflare, a browser) can hand out a stale one.
+            string cache = rel.StartsWith("vendor/") || req.QueryString["v"] != null ? "public, max-age=2592000, immutable" : "no-cache";
             string etag = "\"" + data.Length.ToString("x") + "-" + Fnv(data).ToString("x") + "\"";
             if (req.Headers["If-None-Match"] == etag)
             {
@@ -562,6 +552,65 @@ namespace WebMap
             }
             res.Headers.Add("ETag", etag);
             Bytes(e, data, ctype, cache, compressible: ext == "html" || ext == "js" || ext == "mjs" || ext == "css" || ext == "json" || ext == "svg");
+        }
+
+        // a web file's bytes: from disk next to the DLL, else from the copy inside the DLL; cached
+        private byte[] ReadWebFile(string rel)
+        {
+            if (fileCache.TryGetValue(rel, out byte[] data)) return data;
+            string full = Path.GetFullPath(Path.Combine(publicRoot, rel.Replace('/', Path.DirectorySeparatorChar)));
+            if (full.StartsWith(publicRoot, StringComparison.Ordinal) && File.Exists(full))
+            {
+                try { data = File.ReadAllBytes(full); }
+                catch (Exception ex) { ZLog.LogError("WebMap: failed to read " + rel + ": " + ex.Message); return null; }
+            }
+            else
+            {
+                data = EmbeddedWebFile(rel);     // no web folder on disk: the copy built into the DLL
+                if (data == null) return null;
+            }
+            if (CACHE_SERVER_FILES) fileCache[rel] = data;
+            return data;
+        }
+
+        // Every script and stylesheet the page loads gets ?v=<hash of its bytes> in its URL, through
+        // the import map for module imports and directly for the script/link tags. A changed file is
+        // a new URL, so browsers and CDNs can never serve yesterday's app.js with today's view3d.js.
+        private byte[] stampedIndex; private byte[] stampedFrom;
+        private byte[] StampIndex(byte[] index)
+        {
+            if (stampedIndex != null && ReferenceEquals(stampedFrom, index)) return stampedIndex;
+            string html = Encoding.UTF8.GetString(index);
+            var sb = new StringBuilder();
+            foreach (string rel in WebFiles())
+            {
+                if (!rel.EndsWith(".js") || rel.StartsWith("vendor/")) continue;
+                byte[] d = ReadWebFile(rel); if (d == null) continue;
+                sb.Append(", \"./").Append(rel).Append("\": \"./").Append(rel).Append("?v=").Append(Fnv(d).ToString("x")).Append('"');
+            }
+            html = html.Replace("\"three/addons/\": \"./vendor/three/addons/\"", "\"three/addons/\": \"./vendor/three/addons/\"" + sb);
+            html = Regex.Replace(html, "(src|href)=\"((?:js|css|icons)/[^\"?]+)\"", m =>
+            {
+                byte[] d = ReadWebFile(m.Groups[2].Value);
+                return d == null ? m.Value : m.Groups[1].Value + "=\"" + m.Groups[2].Value + "?v=" + Fnv(d).ToString("x") + "\"";
+            });
+            stampedFrom = index; stampedIndex = Encoding.UTF8.GetBytes(html);
+            return stampedIndex;
+        }
+
+        // relative paths of every web file, from disk when the folder exists, else from the DLL
+        private IEnumerable<string> WebFiles()
+        {
+            if (Directory.Exists(publicRoot))
+            {
+                foreach (string f in Directory.GetFiles(publicRoot, "*", SearchOption.AllDirectories))
+                    yield return f.Substring(publicRoot.Length).TrimStart(Path.DirectorySeparatorChar, '/').Replace('\\', '/');
+            }
+            else
+            {
+                EmbeddedWebFile("index.html");
+                if (embeddedWeb != null) foreach (var k in embeddedWeb.Keys) yield return k;
+            }
         }
 
         // the web app is also compiled into the DLL (see WebMap.csproj) so a missing web folder

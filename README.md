@@ -288,29 +288,14 @@ Server forgets its cached copies and every open browser reloads. Only the
 web files. A new DLL still needs a game restart. For dev work set
 `cache_server_files = false` and the server reads from disk every time.
 
-## Controls
+### Caches (Cloudflare and friends)
 
-Mouse, 2D: drag to pan, wheel to zoom, right click to add a pin. 3D: drag
-to pan, right-drag (or two fingers) to orbit, wheel to zoom, double click to
-centre on a spot, click a player for the card.
-
-Keys, both views:
-
-| Key | Does |
-|---|---|
-| `W A S D`, arrows | move (`Shift` = fast) |
-| `Q` `E` | turn (3D) |
-| `R` `F` | tilt (3D) |
-| `Z` `X`, `+` `-` | zoom |
-| `P` | follow the next player; again to stop |
-| `M` | switch 2D / 3D |
-| `L` | layers panel |
-| `Home` | go to spawn |
-| `/` | search |
-| `Esc` | stop following, close card |
-
-Follow works in 3D too: the camera glides after the player, keeping your
-angle and distance. Drag or move and it lets go.
+Every script and stylesheet URL carries a hash of the file (`app.js?v=62e6…`),
+written into the page by the server. New file, new URL. So a CDN or a
+browser can never mix an old `view3d.js` with a new `app.js`: one hard
+refresh of the page and everything matches. Only `index.html` itself must
+not be cached for hours. If you put Cloudflare in front, tell it to bypass
+cache for `/` and `/index.html` (or purge after each update).
 
 ## Pins
 
