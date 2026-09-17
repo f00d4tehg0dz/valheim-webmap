@@ -3,21 +3,7 @@
 Mod for your Valheim server. Makes a live map of your world you open in a
 browser. Share `http://your_ip:3000`. Players install nothing. Server only.
 
-![3D view of a player base](docs/screenshots/08-hero-3d.jpg)
-
-## What's new
-
-* **2.1.5** — Keyboard controls in 2D and 3D (WASD, Q E turn, Z X zoom, P
-  follow, M switch, Home spawn). Follow a player in 3D. Lighting has its
-  own spot in Layers.
-* **2.1.4** — Real sky in 3D: sun, moon, stars, dawn and dusk, shadows,
-  rippling water. Lit by the server's clock, or pick a time of day.
-* **2.1.3** — Every model drawn, not one in eight. Locked meshes (carts,
-  beehives, ruins, rocks) now come straight from the game files.
-* **2.1.1** — Pins from the web page (right click). Phone layout fixed. Web
-  app built into the DLL, so mod managers can't lose it. Fixes #1 #2 #3 #5.
-
-Full list in [CHANGELOG.md](CHANGELOG.md).
+![3D view of a player base](https://raw.githubusercontent.com/f00d4tehg0dz/valheim-webmap/main/docs/screenshots/08-hero-3d.jpg)
 
 ## What it does
 
@@ -59,13 +45,13 @@ Full list in [CHANGELOG.md](CHANGELOG.md).
 * **Events.** Joins, leaves, deaths, chat, pings. Saved to `events.jsonl`.
 * **Export.** Pick an area, get a 3D file. Ground, water, every building and
   object, trees, markers. Opens in Blender, Unreal, Unity, Godot. Unreal
-  pack has a heightmap too. See [docs/EXPORT.md](docs/EXPORT.md).
+  pack has a heightmap too. See [docs/EXPORT.md](https://github.com/f00d4tehg0dz/valheim-webmap/blob/main/docs/EXPORT.md).
 * Also: share links, search, works on phone, dark UI, Discord webhook,
   `POST /announce` to shout at everyone.
 
-![Player base in 3D](docs/screenshots/03-base-3d.jpg)
-![2D map](docs/screenshots/02-base-2d.jpg)
-![Stats](docs/screenshots/05-stats.jpg)
+![Player base in 3D](https://raw.githubusercontent.com/f00d4tehg0dz/valheim-webmap/main/docs/screenshots/03-base-3d.jpg)
+![2D map](https://raw.githubusercontent.com/f00d4tehg0dz/valheim-webmap/main/docs/screenshots/02-base-2d.jpg)
+![Stats](https://raw.githubusercontent.com/f00d4tehg0dz/valheim-webmap/main/docs/screenshots/05-stats.jpg)
 
 ## Install
 
@@ -250,7 +236,7 @@ Download button, top bar. Pick the area (what you see on the 2D map, or
 Made in the browser from what the map already shows. Fog applies: nothing
 undiscovered leaves the server. Meshes and textures are the game's own
 files from your server. Use the export yourself, do not pass it around.
-Steps per editor in [docs/EXPORT.md](docs/EXPORT.md).
+Steps per editor in [docs/EXPORT.md](https://github.com/f00d4tehg0dz/valheim-webmap/blob/main/docs/EXPORT.md).
 
 ## HTTP API
 
@@ -374,7 +360,7 @@ the proxy, or a hostname nobody guesses. The mod itself has no login.
 
 `tools/mockserver.js` (Node, no packages): serves the web app with a made-up
 world, fake players, fake events. `node tools/mockserver.js`, open
-<http://localhost:3000>.
+`http://localhost:3000`.
 
 `tools/docker-compose.test.yml`: real dedicated server (lloesche image)
 with a copy of your world.
