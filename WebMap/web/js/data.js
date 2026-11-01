@@ -94,6 +94,7 @@ export const prefabs = {
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); },
   get(hash) { return this.map.get(hash); },
   async refresh() {
+    if (state.config && state.config.enable_3d === false) return;   // 3D-only data
     try {
       const d = await getJSON('data/prefabs.json');
       if (d.rev === this.rev) return;
@@ -132,6 +133,7 @@ class ObjectStore {
   }
   onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   async refreshIndex() {
+    if (state.config && state.config.enable_3d === false) return;   // 3D-only data
     try {
       const idx = await getJSON('data/objects/index.json');
       if (idx.rev === this.indexRev) return;

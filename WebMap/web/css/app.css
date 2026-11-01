@@ -111,6 +111,7 @@ table.stats td { padding: 5px 3px; border-bottom: 1px solid rgba(42,50,61,.5); w
 table.stats td.num, table.stats th.num { text-align: right; }
 table.stats tr.on td:first-child::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); margin-right: 6px; }
 .event { display: flex; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(42,50,61,.5); font-size: 13px; }
+.event[hidden] { display: none; }   /* the type filters set hidden; display:flex above would override it */
 .event time { color: var(--muted); font-size: 11px; flex: none; width: 46px; font-variant-numeric: tabular-nums; padding-top: 2px; }
 .event .t { flex: 1; min-width: 0; }
 .event b { font-weight: 600; }

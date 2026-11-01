@@ -232,7 +232,7 @@ namespace WebMap.Models
                     int tick = idleTicks++;
                     if (extractDone) { extractDone = false; int n = RescanTextures(); WriteTexturesJson(); Rebuild(); ZLog.Log($"WebMap: {n} models to re-export with newly extracted textures"); }
                     else if (meshDone) { meshDone = false; int n = RescanMeshes(); Rebuild(); ZLog.Log($"WebMap: {n} models to re-export with newly extracted meshes"); }
-                    else if (tick == 5 || tick % 60 == 59)
+                    else if (WebMapConfig.ENABLE_3D && (tick == 5 || tick % 60 == 59))   // texture/mesh extraction only feeds 3D
                     {
                         int again = RescanTextures() + RescanMeshes();
                         if (again > 0) ZLog.Log($"WebMap: {again} models to re-export with newly extracted textures or meshes");

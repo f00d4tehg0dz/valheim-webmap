@@ -24,7 +24,7 @@ const shade = (hex, k) => {
 
 export class VegLayer extends L.GridLayer {
   constructor(options) {
-    super(Object.assign({ tileSize: TILE, minZoom: 8, maxZoom: 10, updateWhenIdle: true, keepBuffer: 1, className: 'veg-tile', zIndex: 101 }, options));
+    super(Object.assign({ tileSize: TILE, minZoom: 7.5, maxZoom: 10, updateWhenIdle: true, keepBuffer: 1, className: 'veg-tile', zIndex: 101 }, options));
     chunks.onChange(() => this.redraw());
   }
 
@@ -38,6 +38,10 @@ export class VegLayer extends L.GridLayer {
   }
 
   async draw(canvas, coords, dpr) {
+    // Leaflet still creates tiles for this layer below its minZoom (8). At the opening zoom a
+    // single tile spans ~100 chunks, so each page load fetched ~3,200 data/veg/*.bin files
+    // and drew crowns nobody can see. Nothing is drawn below 8 anyway.
+    if (coords.z < 8) return;
     const mpp = metersPerPixel(coords.z), ppm = 1 / mpp, span = TILE * mpp;
     const minX = -WORLD_HALF + coords.x * span, maxZ = WORLD_HALF - coords.y * span;
     const maxX = minX + span, minZ = maxZ - span;

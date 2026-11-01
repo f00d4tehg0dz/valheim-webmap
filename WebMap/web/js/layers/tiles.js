@@ -5,7 +5,7 @@
 //  * refresh: when the server says a tile was (re)rendered, just that tile
 //    is reloaded in place.
 
-import { MAX_ZOOM, OVER_ZOOM, TILE, worldBounds } from '../crs.js';
+import { MAX_ZOOM, OVER_ZOOM, TILE, WORLD_HALF, worldBounds } from '../crs.js';
 import { on } from '../net.js';
 
 const MAX_FALLBACK = 4;   // how many ancestor levels to try
@@ -20,6 +20,14 @@ export class FallbackTileLayer extends L.GridLayer {
 
   url(z, x, y, bust) {
     return this.template.replace('{z}', z).replace('{x}', x).replace('{y}', y) + (bust ? `?r=${bust}` : '');
+  }
+
+  // Also load options.edgeBufferTiles rings of tiles beyond the viewport, so a short drag lands on
+  // tiles that are already there instead of black squares.
+  _getTiledPixelBounds(center) {
+    const b = super._getTiledPixelBounds(center);
+    const pad = (this.options.edgeBufferTiles || 0) * TILE;
+    return pad ? L.bounds(b.min.subtract([pad, pad]), b.max.add([pad, pad])) : b;
   }
 
   createTile(coords, done) {
@@ -89,5 +97,38 @@ export class FallbackTileLayer extends L.GridLayer {
         this.load(wrap, z, x, y, coords, scaleUp, 0, null, bust);
       }
     }
+  }
+}
+
+// Blurry whole-world base under the map, like the old single-image WebMap: the zoom-BASE_ZOOM
+// tiles are stitched into ONE picture once, shortly after load, and laid under the tile layers.
+// Panning anywhere then shows the land straight away while the sharp tiles load on top, and one
+// picture is cheap to scale while zooming (a tiled underlay redraws dozens of stretched squares).
+const BASE_ZOOM = 3;
+export class BaseWorldImage {
+  constructor(map, template) {
+    this.map = map;
+    this.template = template;
+    map.createPane('basePane').style.zIndex = 150;   // under tilePane (200)
+    setTimeout(() => this.build(), 1500);
+  }
+
+  async build() {
+    const span = TILE * Math.pow(2, MAX_ZOOM - BASE_ZOOM);   // metres per base tile
+    const n = Math.ceil((2 * WORLD_HALF) / span);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = n * TILE;
+    const ctx = canvas.getContext('2d');
+    const jobs = [];
+    for (let y = 0; y < n; y++)
+      for (let x = 0; x < n; x++) {
+        const url = this.template.replace('{z}', BASE_ZOOM).replace('{x}', x).replace('{y}', y);
+        jobs.push(fetch(url, { priority: 'low' }).then((r) => (r.ok ? r.blob() : null)).then((b) => (b ? createImageBitmap(b) : null))
+          .then((img) => { if (img) ctx.drawImage(img, x * TILE, y * TILE); }).catch(() => {}));
+      }
+    await Promise.all(jobs);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) return;
+    this.overlay = L.imageOverlay(URL.createObjectURL(blob), worldBounds, { pane: 'basePane', interactive: false, className: 'base-world' }).addTo(this.map);
   }
 }

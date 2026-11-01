@@ -1,8 +1,6 @@
 // Fog of war: the server's explored mask drawn as a dark veil over
 // everything nobody has walked to yet, softened at the edges.
 
-import { loadImage } from '../net.js';
-
 export class FogLayer {
   constructor(map, cfg) {
     this.map = map;
@@ -28,7 +26,15 @@ export class FogLayer {
 
   async refresh() {
     try {
-      const img = await loadImage(`data/fog.png?t=${Date.now()}`);
+      // The mask only changes when someone explores. Compare the raw PNG bytes (~10 KB) with the
+      // last ones and skip the 2048x2048 re-process and re-encode below when nothing changed.
+      const res = await fetch('data/fog.png', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`fog ${res.status}`);
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const prev = this.lastMask;
+      if (prev && prev.length === buf.length && prev.every((b, i) => b === buf[i])) return;
+      this.lastMask = buf;
+      const img = await createImageBitmap(new Blob([buf], { type: 'image/png' }));
       const sctx = this.src.getContext('2d', { willReadFrequently: true });
       sctx.drawImage(img, 0, 0, this.size, this.size);
       const id = sctx.getImageData(0, 0, this.size, this.size);
@@ -46,7 +52,11 @@ export class FogLayer {
       ctx.filter = 'blur(1.2px)';
       ctx.drawImage(this.src, 0, 0);
       ctx.filter = 'none';
-      const url = this.canvas.toDataURL('image/png');
+      // toBlob encodes off the main thread; toDataURL blocked it for ~160 ms every refresh.
+      const blob = await new Promise((resolve) => this.canvas.toBlob(resolve, 'image/png'));
+      const url = URL.createObjectURL(blob);
+      if (this.lastUrl) setTimeout((u) => URL.revokeObjectURL(u), 5000, this.lastUrl);
+      this.lastUrl = url;
       if (!this.overlay) {
         this.overlay = L.imageOverlay(url, this.bounds, { opacity: this.opacity, className: 'fog-layer', zIndex: 300, interactive: false });
         if (this.visible) this.overlay.addTo(this.map);

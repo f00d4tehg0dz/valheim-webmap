@@ -270,7 +270,7 @@ namespace WebMap.World
 
         // ---------------------------------------------------------------- classification
 
-        private static Shape ShapeOf(int prefabHash)
+        internal static Shape ShapeOf(int prefabHash)
         {
             if (shapeCache.TryGetValue(prefabHash, out var s)) return s;
             string name = null;

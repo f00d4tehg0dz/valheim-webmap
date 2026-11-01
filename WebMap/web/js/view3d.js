@@ -17,6 +17,7 @@ import { Lighting } from './sky.js';
 import { materialColors, colors as iconColors } from './icons.js';
 import { layerState } from './layerstate.js';
 import { WORLD_HALF, MAX_ZOOM, TILE, metersPerPixel, chunkOf } from './crs.js';
+import { fetchTerrarium } from './png.js';
 
 const RINGS = [                   // zoom -> load within this distance of the target (metres)
   { z: 7, dist: 640, segs: 128 },
@@ -522,12 +523,11 @@ uniform sampler2D uFog; uniform float uFogOn; uniform float uFogOpacity; uniform
     const key = `${z}/${x}/${y}`;
     const entry = { z, x, y, mesh: null, ready: false, heights: null, segs };
     this.terrain.set(key, entry);
-    let heightImg, tex;
+    let heights, tex;
     try {
-      [heightImg, tex] = await Promise.all([loadImg(`tiles/height/${z}/${x}/${y}.png`), this.loadTexture(`tiles/map/${z}/${x}/${y}.png`)]);
+      [heights, tex] = await Promise.all([loadHeights(`tiles/height/${z}/${x}/${y}.png`), this.loadTexture(`tiles/map/${z}/${x}/${y}.png`)]);
     } catch { return; }                       // not rendered (yet): the coarser ring covers it
     if (!this.terrain.has(key)) return;        // dropped while loading
-    const heights = decodeTerrarium(heightImg);
     entry.heights = heights;
     const span = TILE * metersPerPixel(z);
     const minX = -WORLD_HALF + x * span, maxZ = WORLD_HALF - y * span;
@@ -962,6 +962,16 @@ function fallbackColor(info) {
 
 function loadImg(src) {
   return new Promise((resolve, reject) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => resolve(i); i.onerror = reject; i.src = src; });
+}
+
+// Heights straight from the PNG bytes (see png.js); the canvas path is only the fallback for
+// browsers without DecompressionStream or an unexpected file.
+async function loadHeights(src) {
+  try { return await fetchTerrarium(src); }
+  catch (e) {
+    if (String(e.message).startsWith('missing')) throw e;
+    return decodeTerrarium(await loadImg(src));
+  }
 }
 
 // Terrarium RGB -> Float32Array of heights (row-major, north first)

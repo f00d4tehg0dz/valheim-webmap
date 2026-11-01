@@ -34,6 +34,7 @@ namespace WebMap
     //   /tiles/height/{z}/{x}/{y}.png  Terrarium-encoded height tile
     //   /tiles/veg/{z}/{x}/{y}.png    transparent overlay of tree crowns and rocks (zoom 5+, 2D only)
     //   /data/structures/index.json, /data/structures/{cx}_{cz}.json
+    //   /data/ruins/index.json, /data/ruins/{cx}_{cz}.json   world-generated structures (explored only)
     //   /data/veg/{cx}_{cz}.bin    vegetation points for a chunk
     //   /data/markers.json         marker sets (locations, portals, tombstones, vehicles, custom)
     //   /data/players.json, /data/stats.json, /data/events.json, /data/pins.json, /data/fog.png
@@ -319,9 +320,11 @@ namespace WebMap
 
                 // ---- simple endpoints (single-image map, plain lists)
                 case "/map":
+                    if (!WebMapConfig.LEGACY_MAP) return Text(e, "disabled (legacy_map = false)", "text/plain", status: 404);
                     if (mapImageData == null) return Text(e, "not built", "text/plain", status: 503);
                     return Bytes(e, mapImageData, "application/octet-stream", "public, max-age=604800, immutable");
                 case "/map.jpg":
+                    if (!WebMapConfig.LEGACY_MAP) return Text(e, "disabled (legacy_map = false)", "text/plain", status: 404);
                     if (mapJpgCache == null) return Text(e, "not built", "text/plain", status: 503);
                     return Bytes(e, mapJpgCache, "image/jpeg", "public, max-age=604800, immutable");
                 case "/fog": return Bytes(e, Fog.Png(), "image/png", "no-cache");
@@ -496,6 +499,7 @@ namespace WebMap
                 case "markers.json": return Text(e, Markers.Json, "application/json", nocache: true);
                 case "fog.png": return Bytes(e, Fog.Png(), "image/png", "no-cache");
                 case "structures/index.json": return Text(e, Structures.IndexJson, "application/json", nocache: true);
+                case "ruins/index.json": return Text(e, Ruins.IndexJson, "application/json", nocache: true);
                 case "objects/index.json": return Text(e, WorldObjects.IndexJson, "application/json", nocache: true);
                 case "prefabs.json": return Text(e, Models.ModelStore.PrefabsJson, "application/json", nocache: true);
             }
@@ -513,6 +517,13 @@ namespace WebMap
                 if (!ParseChunk(rest.Substring("structures/".Length, rest.Length - "structures/".Length - 5), out int cx, out int cz)) { NotFound(res); return true; }
                 string json = Structures.ChunkJson(cx, cz);
                 if (json == null) json = "{\"cx\":" + cx + ",\"cz\":" + cz + ",\"rev\":0,\"count\":0,\"pieces\":[],\"prefabs\":[]}";
+                return Text(e, json, "application/json", nocache: true);
+            }
+            if (rest.StartsWith("ruins/") && rest.EndsWith(".json"))
+            {
+                if (!ParseChunk(rest.Substring("ruins/".Length, rest.Length - "ruins/".Length - 5), out int cx, out int cz)) { NotFound(res); return true; }
+                string json = Ruins.ChunkJson(cx, cz);
+                if (json == null) { NotFound(res); return true; }
                 return Text(e, json, "application/json", nocache: true);
             }
             if (rest.StartsWith("veg/") && rest.EndsWith(".bin"))

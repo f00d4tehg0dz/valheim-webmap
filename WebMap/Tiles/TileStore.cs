@@ -211,7 +211,7 @@ namespace WebMap.Tiles
             long key = TileMath.Key(zoom, x, y);
             lock (queueLock)
             {
-                if (onlyIfMissing && haveColor.Contains(key) && (zoom > WebMapConfig.HEIGHT_MAX_ZOOM || haveHeight.Contains(key))) return false;
+                if (onlyIfMissing && haveColor.Contains(key) && (zoom > WebMapConfig.HeightMaxZoom || haveHeight.Contains(key))) return false;
                 if (queued.TryGetValue(key, out var waiting))
                 {
                     // already waiting (or rendering): maybe raise its priority
@@ -276,7 +276,7 @@ namespace WebMap.Tiles
         private static void Render(Job job)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            bool wantHeight = job.zoom <= WebMapConfig.HEIGHT_MAX_ZOOM;
+            bool wantHeight = job.zoom <= WebMapConfig.HeightMaxZoom;
             job.work = new TileJob(job.zoom, job.x, job.y, wantHeight);
 
             if (!mainThreadSampling)
@@ -385,7 +385,7 @@ namespace WebMap.Tiles
             bool have; lock (queueLock) have = height ? haveHeight.Contains(key) : vegL ? haveVeg.Contains(key) : haveColor.Contains(key);
             if (!have)
             {
-                if (!height || zoom <= WebMapConfig.HEIGHT_MAX_ZOOM) RequestMissing(zoom, x, y);
+                if (!height || zoom <= WebMapConfig.HeightMaxZoom) RequestMissing(zoom, x, y);
                 return null;
             }
             version.TryGetValue(key, out int v);
@@ -426,7 +426,7 @@ namespace WebMap.Tiles
             j.Prop("maxZoom", TileMath.MAX_ZOOM);
             j.Prop("prerenderZoom", WebMapConfig.PRERENDER_ZOOM);
             j.Prop("maxRenderZoom", WebMapConfig.MAX_RENDER_ZOOM);
-            j.Prop("heightMaxZoom", WebMapConfig.HEIGHT_MAX_ZOOM);
+            j.Prop("heightMaxZoom", WebMapConfig.HeightMaxZoom);
             j.End();
             return j.ToString();
         }

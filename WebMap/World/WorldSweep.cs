@@ -31,10 +31,21 @@ namespace WebMap.World
 
         public static IEnumerator Loop()
         {
+            float loopStart = Time.time;   // game time, like WaitForSeconds: it barely advances while the world is still loading
             yield return new WaitForSeconds(WebMapConfig.FIRST_SWEEP_DELAY);
+            // one extra sweep shortly after start: the first one runs early so the map fills in quickly,
+            // and this catches anything that was still loading when it did
+            bool early = WebMapConfig.SECOND_SWEEP_DELAY > WebMapConfig.FIRST_SWEEP_DELAY;
             while (true)
             {
                 yield return Sweep();
+                if (early)
+                {
+                    early = false;
+                    float wait = WebMapConfig.SECOND_SWEEP_DELAY - (Time.time - loopStart);
+                    if (wait > 0f) yield return new WaitForSeconds(wait);
+                    continue;
+                }
                 float waited = 0f;
                 while (waited < WebMapConfig.SWEEP_INTERVAL && !RefreshRequested && !StructureMap.RefreshRequested)
                 {
@@ -74,8 +85,13 @@ namespace WebMap.World
 
             int size = WebMapConfig.TEXTURE_SIZE, half = size / 2, pixel = WebMapConfig.PIXEL_SIZE;
             int perFrame = Math.Max(500, WebMapConfig.SWEEP_ZDOS_PER_FRAME);
+            // nobody connected (e.g. right after a restart): nobody to lag either, so sweep in big slices
+            int peers = 0;
+            try { peers = ZNet.instance != null ? ZNet.instance.GetPeers().Count : 0; } catch { }
+            if (peers == 0) perFrame *= 20;
 
             Structures.Begin();
+            Ruins.Begin();
             Vegetation.Begin();
             Vehicles.Begin();
             Markers.Begin();
@@ -103,7 +119,8 @@ namespace WebMap.World
                         {
                             long creator = 0L;
                             try { creator = zdo.GetLong(ZDOVars.s_creator, 0L); } catch { }
-                            WorldObjects.Observe(zdo, pref, p, creator);
+                            // the 3D object data (and the model export it requests) only matters with 3D on
+                            if (WebMapConfig.ENABLE_3D) WorldObjects.Observe(zdo, pref, p, creator);
                             int lx = Mathf.RoundToInt(p.x / pixel + half);
                             int ly = Mathf.RoundToInt(p.z / pixel + half);
                             bool inLegacy = lx >= 0 && ly >= 0 && lx < size && ly < size;
@@ -121,7 +138,8 @@ namespace WebMap.World
                             }
                             else if (!Markers.Observe(zdo, NameOf(pref), p))
                             {
-                                if (Vegetation.Observe(pref, p) && inLegacy) ForestMap.Observe(pref, legacyIdx);
+                                if (Vegetation.Observe(pref, p)) { if (inLegacy) ForestMap.Observe(pref, legacyIdx); }
+                                else Ruins.Observe(zdo, pref, p);
                             }
                         }
                     }
@@ -136,6 +154,7 @@ namespace WebMap.World
             foreach (long z in Vegetation.Finish()) changedZones.Add(z);
             yield return null;
             int changedChunks = Structures.Finish();
+            Ruins.Finish();
             yield return null;
             Vehicles.Finish();
             Markers.Finish();

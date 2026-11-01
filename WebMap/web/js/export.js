@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { objects, prefabs, markers } from './data.js';
 import { WORLD_HALF, TILE, MAX_ZOOM, metersPerPixel, chunkOf } from './crs.js';
+import { fetchTerrarium } from './png.js';
 
 const CHUNK = 256;
 const MAX_CHUNKS = 36;   // 6 x 6 = 1.5 km on a side
@@ -23,6 +24,15 @@ const MAX_CHUNKS = 36;   // 6 x 6 = 1.5 km on a side
 
 async function loadImage(url) {
   return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = () => reject(new Error('missing ' + url)); im.src = url; });
+}
+
+// Heights straight from the PNG bytes (see png.js), canvas only as the fallback.
+async function loadHeights(url) {
+  try { return await fetchTerrarium(url); }
+  catch (e) {
+    if (String(e.message).startsWith('missing')) throw e;
+    return decodeTerrarium(await loadImage(url));
+  }
 }
 
 function decodeTerrarium(img) {
@@ -46,11 +56,11 @@ function sampleH(h, u, v) {
 // One 256 m chunk of terrain: the zoom-7 height and colour tiles share the chunk grid.
 async function loadChunkTerrain(cx, cz) {
   const tx = cx, ty = 79 - cz;   // chunk (cx, cz) counts from the south-west; tiles count from the north-west
-  const [himg, colour] = await Promise.all([
-    loadImage(`tiles/height/${MAX_ZOOM}/${tx}/${ty}.png`),
+  const [heights, colour] = await Promise.all([
+    loadHeights(`tiles/height/${MAX_ZOOM}/${tx}/${ty}.png`),
     fetch(`tiles/map/${MAX_ZOOM}/${tx}/${ty}.png`).then((r) => r.ok ? r.arrayBuffer() : null).catch(() => null),
   ]);
-  return { heights: decodeTerrarium(himg), colour, minX: -WORLD_HALF + cx * CHUNK, minZ: -WORLD_HALF + cz * CHUNK };
+  return { heights, colour, minX: -WORLD_HALF + cx * CHUNK, minZ: -WORLD_HALF + cz * CHUNK };
 }
 
 // ---------------------------------------------------------------- glb writer

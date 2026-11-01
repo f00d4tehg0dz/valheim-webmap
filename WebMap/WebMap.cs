@@ -90,11 +90,13 @@ namespace WebMap
             }
             currentWorldName = worldName;
 
-            // single-image world render (served at /map for simple clients)
+            // single-image world render (served at /map for simple clients). It shows the whole
+            // world with no fog, so only load it when legacy_map is on: turning the setting off
+            // must also stop serving a map.png left over from an earlier run.
             try
             {
                 string mapImagePath = Path.Combine(worldDataPath, "map.png");
-                if (File.Exists(mapImagePath))
+                if (WebMapConfig.LEGACY_MAP && File.Exists(mapImagePath))
                 {
                     mapDataServer.mapImageData = File.ReadAllBytes(mapImagePath);
                     mapDataServer.BuildMapJpg();

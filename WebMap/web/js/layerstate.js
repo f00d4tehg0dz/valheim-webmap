@@ -4,6 +4,7 @@
 export const layerState = {
   fog: true, fogOpacity: 1,     // fog of war is always on, fully black over unexplored ground
   buildings: true, buildingsOpacity: 1,
+  ruins: true,          // world-generated structures (2D)
   players: true, pins: true, labels: true, grid: false,
   veg: true,            // the 2D tree/rock overlay (the 3D view has its own object chips)
   time3d: 'live',       // 3D lighting: 'live' follows the server's clock, or noon/morning/evening/night

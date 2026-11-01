@@ -82,26 +82,30 @@ export class Sidebar {
     p.append(row('Players', S.players, (v) => { L.players.setVisible(v); S.set('players', v); }));
     p.append(row('Pins', S.pins, (v) => { L.markers.setVisible('pins', v); S.set('pins', v); }));
     p.append(row('Marker labels', S.labels, (v) => { document.body.classList.toggle('no-labels', !v); S.set('labels', v); }));
+    p.append(row('World structures (2D)', S.ruins, (v) => { if (v) L.ruins.addTo(this.app.map); else L.ruins.remove(); S.set('ruins', v); }));
     p.append(row('Grid (256 m, 2D)', S.grid, (v) => { this.app.setGrid(v); S.set('grid', v); }));
     p.append(row('Trees & rocks (2D)', S.veg, (v) => { if (v) L.veg.addTo(this.app.map); else L.veg.remove(); S.set('veg', v); }));
 
-    p.append(el('<h3>3D objects</h3>'));
-    const objs = el('<div class="filters"></div>');
-    for (const [cat, label] of OBJECT_CATS) {
-      const on = objectFilter.shows(cat);
-      const lab = el(`<label class="${on ? '' : 'off'}"><input type="checkbox" ${on ? 'checked' : ''}> ${label}</label>`);
-      lab.querySelector('input').addEventListener('change', (e) => { lab.classList.toggle('off', !e.target.checked); objectFilter.set(cat, e.target.checked); });
-      objs.append(lab);
-    }
-    p.append(objs);
+    // the 3D-only sections are left out when the server has enable_3d = false
+    if (this.app.config?.enable_3d !== false) {
+      p.append(el('<h3>3D objects</h3>'));
+      const objs = el('<div class="filters"></div>');
+      for (const [cat, label] of OBJECT_CATS) {
+        const on = objectFilter.shows(cat);
+        const lab = el(`<label class="${on ? '' : 'off'}"><input type="checkbox" ${on ? 'checked' : ''}> ${label}</label>`);
+        lab.querySelector('input').addEventListener('change', (e) => { lab.classList.toggle('off', !e.target.checked); objectFilter.set(cat, e.target.checked); });
+        objs.append(lab);
+      }
+      p.append(objs);
 
-    p.append(el('<h3>Lighting (3D)</h3>'));
-    const light = el(`<div class="row"><span class="grow name">Time of day</span><select class="sel" id="time3d">
-      <option value="live">Live, like in game</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>`);
-    const sel = light.querySelector('select'); sel.value = S.time3d;
-    sel.addEventListener('change', () => S.set('time3d', sel.value));
-    p.append(light);
-    p.append(row('Shadows', S.shadows, (v) => S.set('shadows', v)));
+      p.append(el('<h3>Lighting (3D)</h3>'));
+      const light = el(`<div class="row"><span class="grow name">Time of day</span><select class="sel" id="time3d">
+        <option value="live">Live, like in game</option><option value="morning">Morning</option><option value="noon">Noon</option><option value="evening">Evening</option><option value="night">Night</option></select></div>`);
+      const sel = light.querySelector('select'); sel.value = S.time3d;
+      sel.addEventListener('change', () => S.set('time3d', sel.value));
+      p.append(light);
+      p.append(row('Shadows', S.shadows, (v) => S.set('shadows', v)));
+    }
 
     p.append(el('<h3>Markers</h3>'));
     this.markerSetRows = el('<div></div>');

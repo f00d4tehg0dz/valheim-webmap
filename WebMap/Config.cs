@@ -54,7 +54,8 @@ namespace WebMap
 
         // world sweep
         public static float SWEEP_INTERVAL = 120f;
-        public static float FIRST_SWEEP_DELAY = 30f;
+        public static float FIRST_SWEEP_DELAY = 5f;
+        public static float SECOND_SWEEP_DELAY = 30f;
         public static int SWEEP_ZDOS_PER_FRAME = 3000;
 
         // markers, stats, privacy
@@ -62,6 +63,8 @@ namespace WebMap
         public static bool EVENT_LOG = true;
         public static float STATS_SAVE_INTERVAL = 60f;
         public static bool ENABLE_3D = true;
+        // height tiles only feed the 3D view and the export: with 3D off nothing renders them
+        public static int HeightMaxZoom => ENABLE_3D ? HEIGHT_MAX_ZOOM : -1;
         public static bool LEGACY_MAP = true;
         public static bool REVEAL_ALL = false;
 
@@ -221,7 +224,11 @@ namespace WebMap
 
             FIRST_SWEEP_DELAY = config.Bind<float>("Sweep", "first_sweep_delay",
                 WebMapConfig.FIRST_SWEEP_DELAY,
-                "Seconds after world load before the first sweep.").Value;
+                "Seconds after world load before the first sweep. Buildings and world structures stay empty on the map until it has run.").Value;
+            SECOND_SWEEP_DELAY = config.Bind<float>("Sweep", "second_sweep_delay",
+                WebMapConfig.SECOND_SWEEP_DELAY,
+                "Seconds after world load for one extra sweep, to pick up anything still loading during the first one. "
+                + "After it the regular sweep_interval applies. 0 turns it off.").Value;
 
             SWEEP_ZDOS_PER_FRAME = config.Bind("Sweep", "zdos_per_frame",
                 WebMapConfig.SWEEP_ZDOS_PER_FRAME,
