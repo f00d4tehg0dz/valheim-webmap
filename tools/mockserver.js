@@ -333,7 +333,7 @@ const stats = () => ({ server: { startedUtc: new Date(Date.now() - 3.6e6).toISOS
   onlineHistory: Array.from({ length: 288 }, (_, i) => [Math.floor(Date.now() / 1000) - (288 - i) * 300, Math.round(2 + 2 * Math.sin(i / 20) + (i % 7 === 0 ? 1 : 0))]),
   players: [{ key: 'a', name: 'Ragnar', playtime: 54000, sessions: 31, deaths: 7, distance: 182000, portalTrips: 40, online: true, lastSeen: new Date().toISOString(), biomes: ['Meadows', 'Black Forest'] }, { key: 'b', name: 'Freya', playtime: 32000, sessions: 18, deaths: 2, distance: 91000, portalTrips: 12, online: true, lastSeen: new Date().toISOString(), biomes: ['Meadows'] }, { key: 'c', name: 'Olaf', playtime: 9000, sessions: 4, deaths: 9, distance: 12000, portalTrips: 1, online: false, lastSeen: new Date(Date.now() - 2 * 864e5).toISOString(), lastX: 300, lastZ: -200, biomes: ['Meadows'] }] });
 const pins = [{ owner: 'x', id: 'p1', type: 'mine', name: 'Ragnar', x: 520, z: 480, text: 'copper' }];
-const config = { web_pins: true, web_edit_bases: true, world_name: process.env.WEBMAP_WORLD || 'Mockheim', title: process.env.WEBMAP_TITLE || 'Mock server', version: '1.0.0-mock', texture_size: FOG, pixel_size: FPX, max_zoom: 7, world_size: 20480, world_start_pos: '0,40,0', water_level: WATER, enable_3d: true, explore_radius: 100, update_interval: 1 };
+const config = { web_pins: true, web_unpin_any: true, web_edit_bases: true, world_name: process.env.WEBMAP_WORLD || 'Mockheim', title: process.env.WEBMAP_TITLE || 'Mock server', version: '1.0.0-mock', texture_size: FOG, pixel_size: FPX, max_zoom: 7, world_size: 20480, world_start_pos: '0,40,0', water_level: WATER, enable_3d: true, explore_radius: 100, update_interval: 1 };
 
 // ---------------------------------------------------------------- http
 const tileCache = new Map();
@@ -400,7 +400,7 @@ const server = http.createServer((req, res) => {
   }
   if (p === '/api/unpin' && req.method === 'POST') {
     const owner = 'web:' + String(req.headers['x-webmap-client'] || 'anon').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
-    const i = pins.findIndex((q) => q.id === u.searchParams.get('id') && q.owner === owner);
+    const i = pins.findIndex((q) => q.id === u.searchParams.get('id') && (config.web_unpin_any || q.owner === owner));
     if (i < 0) return send(404, '{"error":"not yours"}', 'application/json');
     pins.splice(i, 1); broadcast({ t: 'rmpin', id: u.searchParams.get('id') });
     return send(200, '{"removed":true}', 'application/json');

@@ -394,12 +394,20 @@ namespace WebMap
                 }
                 case "/api/unpin":
                 {
-                    // remove one pin: ?id=<pin id>. Only its owner (same browser) or the token holder
+                    // remove one pin: ?id=<pin id> (or JSON {id}). Anyone when web_unpin_any is on, else
+                    // only the browser that made it; the token holder always
                     if (!post) return false;
                     string id = req.QueryString["id"] ?? "";
+                    string body;
+                    try { using (var sr = new StreamReader(req.InputStream, Encoding.UTF8)) body = sr.ReadToEnd(); } catch { body = ""; }
+                    if (id.Length == 0)
+                    {
+                        try { var f = JsonParser.Parse(body) as Dictionary<string, object>; if (f != null) id = JsonParser.Str(f, "id", ""); } catch { }
+                    }
                     if (id.Length == 0 || id.Contains(",")) return Text(e, "{\"error\":\"need id\"}", "application/json", nocache: true, status: 400);
-                    string owner = Authorized(req) ? "" : WebOwner(req, null);
-                    if (!WEB_PINS && owner.Length > 0) return Text(e, "{\"error\":\"web pins are off\"}", "application/json", nocache: true, status: 403);
+                    bool auth = Authorized(req);
+                    if (!WEB_PINS && !auth) return Text(e, "{\"error\":\"web pins are off\"}", "application/json", nocache: true, status: 403);
+                    string owner = auth || WebMapConfig.WEB_UNPIN_ANY ? "" : WebOwner(req, null);
                     bool ok = WebMap.DeletePinById(owner, id);
                     return Text(e, ok ? "{\"removed\":true}" : "{\"error\":\"not yours\"}", "application/json", nocache: true, status: ok ? 200 : 404);
                 }

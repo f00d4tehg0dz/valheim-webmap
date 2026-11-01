@@ -11,6 +11,9 @@ Brought in [PR #19](https://github.com/f00d4tehg0dz/valheim-webmap/pull/19) by @
 * Fix: `legacy_map = false` no longer serves the unfogged `/map` and `/map.jpg`, and a leftover `map.png` is not loaded. (#16)
 * Fix: 3D height spikes in Brave and other browsers that add noise to canvas reads. Heights are decoded from the PNG bytes directly. (#18)
 * Fix: event type filters actually hide the rows.
+* Fix: removing pins from the web page. Any pin can be removed by anyone now, chat pins included (`web_unpin_any = false` goes back to "only the browser that made it"); the request carries a JSON body so reverse proxies stop dropping it; a failed removal says why instead of silently closing. (#17, thanks @tomvb)
+* Pins from the 3D view: right click (long press) the ground, same form as in 2D.
+* Fix: things floating or sunk in the distance in 3D. Buildings, objects and trees are now only drawn as far as the full-detail ground goes.
 * "Trees & rocks (2D)" is off by default. Tick it in Layers when you want it; on a big world it is a lot of tiles.
 
 ## 2.1.6

@@ -206,6 +206,7 @@ cuts that by four.
 | Discord | `discord_webhook`, `discord_invite_url` | | webhook for events |
 | Server | `webmap_url`, `max_pins_per_user` | | link shown in game, pin limit |
 | User | `web_pins` | true | let the web page place pins (right click / long press) |
+| User | `web_unpin_any` | true | anyone can remove any pin from the web page. Off: only your own |
 | User | `web_edit_bases` | true | let the web page rename or hide auto-detected bases (click the marker) |
 | Markers | `base_min_pieces` | 30 | built pieces in a spot before it counts as a base |
 | Markers | `base_min_per_cell` | 6 | pieces per 64 m cell before that cell joins a base |
@@ -319,10 +320,11 @@ cache for `/` and `/index.html` (or purge after each update).
 
 ## Pins
 
-**From the web page.** Right click the map (long press on a phone). Pick a
-type, write a label, add pin. Your own pins have a "Remove pin" button.
-Only the browser that made a pin can remove it. `web_pins = false` turns
-this off. `max_pins_per_user` caps pins per browser, old ones go first.
+**From the web page.** Right click the map (long press on a phone), in 2D
+or in 3D. Pick a type, write a label, add pin. Every pin has a "Remove pin" button, chat
+pins too. `web_unpin_any = false` limits that to the browser that made the
+pin. `web_pins = false` turns web pins off. `max_pins_per_user` caps pins
+per browser, old ones go first.
 
 **Bases.** Bases are found by looking at what is built. Click a base marker
 to give it a name, hide it, or go back to the auto name (portal tag near it,

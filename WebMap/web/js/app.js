@@ -281,6 +281,7 @@ class App {
     this.view3d.onUnfollow = () => this.layers.players.follow(null);
     this.view3d.onHome = () => this.goToSpawn(true);
     this.view3d.onView = () => this.updateHash();
+    this.view3d.onPinAt = (x, z, left, top) => { if (this.config?.web_pins !== false) this.layers.markers.openPinEditor({ x, z }, { left, top }); };
     this.view3d.setPlayers(this.layers.players.players);
     this.view3d.setPins(this.layers.markers.pinList());
     this.layers.markers.onPins((pins) => this.view3d.setPins(pins));

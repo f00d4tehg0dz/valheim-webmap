@@ -20,12 +20,14 @@ import { WORLD_HALF, MAX_ZOOM, TILE, metersPerPixel, chunkOf } from './crs.js';
 import { fetchTerrarium } from './png.js';
 
 const RINGS = [                   // zoom -> load within this distance of the target (metres)
-  { z: 7, dist: 640, segs: 128 },
+  { z: 7, dist: 720, segs: 128 },
   { z: 6, dist: 1600, segs: 64 },
   { z: 5, dist: 3600, segs: 64 },
   { z: 4, dist: 9000, segs: 32 },
 ];
-const STRUCT_DIST = 900, VEG_DIST = 700, MARKER_DIST = 2500, OBJ_DIST = 850;
+// objects, buildings and trees only go as far as the full-detail terrain ring: on the coarser rings
+// the hills are smoothed and anything standing on them floats or sinks
+const STRUCT_DIST = 700, VEG_DIST = 700, MARKER_DIST = 2500, OBJ_DIST = 700;
 
 const VEG = {   // kind -> [crownRadius, height, color, shape]  (mirrors Palette.cs)
   1: [4.5, 12, '#568a3a', 'sphere'], 2: [3.0, 16, '#2c5234', 'cone'], 3: [3.0, 10, '#383e28', 'sphere'], 4: [4.0, 14, '#4a6870', 'sphere'],
@@ -142,15 +144,28 @@ export class View3D {
     });
     document.addEventListener('keyup', (e) => { this.keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key); });
     window.addEventListener('blur', () => this.keys.clear());
+    // right click (long press on a phone): a pin there, like on the 2D map
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (!this.onPinAt) return;
+      const hit = this.groundHit(e.clientX, e.clientY);
+      if (hit) this.onPinAt(hit.x, -hit.z, e.clientX, e.clientY);
+    });
     // double click: centre on that spot
     canvas.addEventListener('dblclick', (e) => {
-      const r = canvas.getBoundingClientRect();
-      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-      this.raycaster.setFromCamera(ndc, this.camera);
-      const ground = [...this.terrain.values()].filter((t) => t.mesh).map((t) => t.mesh);
-      const hit = this.raycaster.intersectObjects(ground, false)[0];
-      if (hit) { this.follow(null); this.lookAt(hit.point.x, -hit.point.z); }
+      const hit = this.groundHit(e.clientX, e.clientY);
+      if (hit) { this.follow(null); this.lookAt(hit.x, -hit.z); }
     });
+  }
+
+  // the point on the terrain under a screen position (scene coordinates), or null
+  groundHit(clientX, clientY) {
+    const r = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const ground = [...this.terrain.values()].filter((t) => t.mesh && t.mesh.visible).map((t) => t.mesh);
+    const hit = this.raycaster.intersectObjects(ground, false)[0];
+    return hit ? hit.point : null;
   }
 
   // camera tracks a player (null stops); the players layer calls this so 2D and 3D stay in step

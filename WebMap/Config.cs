@@ -18,6 +18,7 @@ namespace WebMap
         public static float SAVE_FOG_TEXTURE_INTERVAL = 30f;
         public static int MAX_PINS_PER_USER = 50;
         public static bool WEB_PINS = true;
+        public static bool WEB_UNPIN_ANY = true;
         public static bool WEB_EDIT_BASES = true;
         public static int BASE_MIN_PIECES = 30;
         public static int BASE_MIN_PER_CELL = 6;
@@ -121,6 +122,10 @@ namespace WebMap
             WEB_PINS = config.Bind("User", "web_pins",
                 WebMapConfig.WEB_PINS,
                 "Let people place and remove their own pins from the web page (right click or long press the map). Chat pins (!pin) only reach the server while two or more players are online, so this is the way that always works.").Value;
+
+            WEB_UNPIN_ANY = config.Bind("User", "web_unpin_any",
+                WebMapConfig.WEB_UNPIN_ANY,
+                "Let anyone on the web page remove any pin, chat pins included. Off: a browser can only remove the pins it made itself (and nobody can remove chat pins from the web). The token holder always can.").Value;
 
             WEB_EDIT_BASES = config.Bind("User", "web_edit_bases",
                 WebMapConfig.WEB_EDIT_BASES,
@@ -326,6 +331,7 @@ namespace WebMap
             config["explore_radius"] = EXPLORE_RADIUS;
             config["max_messages"] = MAX_MESSAGES;
             config["web_pins"] = WEB_PINS;
+            config["web_unpin_any"] = WEB_UNPIN_ANY;
             config["web_edit_bases"] = WEB_EDIT_BASES;
             config["max_pins_per_user"] = MAX_PINS_PER_USER;
             config["always_map"] = ALWAYS_MAP;

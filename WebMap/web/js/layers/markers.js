@@ -122,12 +122,20 @@ export class MarkerLayers {
     const mk = L.marker(toLatLng(p.x, p.z), { icon: makeIcon(icon, colors[icon], p.text, 'mk-pin'), keyboard: false });
     mk.data = p;
     const mine = p.owner === 'web:' + clientId();
+    // anyone may remove any pin unless the server set web_unpin_any = false; your own always
+    const canRemove = mine || window.app?.config?.web_unpin_any !== false;
     mk.bindPopup(() => {
       const el = document.createElement('div');
       el.innerHTML = `<b>${escape(p.text || 'Pin')}</b><small>by ${escape(p.name)} · ${p.x}, ${p.z}</small>` +
-        (mine ? `<div class="pin-actions"><button class="btn small" type="button">Remove pin</button></div>` : '');
-      el.querySelector('button')?.addEventListener('click', async () => {
-        try { await fetch('api/unpin?id=' + encodeURIComponent(p.id), { method: 'POST', headers: { 'X-WebMap-Client': clientId() } }); } catch (e) { console.warn('unpin', e); }
+        (canRemove ? `<div class="pin-actions"><button class="btn small" type="button">Remove pin</button></div>` : '');
+      el.querySelector('button')?.addEventListener('click', async (ev) => {
+        ev.target.disabled = true;
+        try {
+          // a JSON body (not an empty POST): some reverse proxies drop body-less POSTs on the floor
+          const r = await fetch('api/unpin?id=' + encodeURIComponent(p.id), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WebMap-Client': clientId() }, body: JSON.stringify({ id: p.id }) });
+          if (!r.ok) { const j = await r.json().catch(() => ({})); window.app?.toast?.(j.error === 'not yours' ? 'Only the browser that made this pin can remove it' : 'Could not remove pin'); ev.target.disabled = false; return; }
+          this.removePin(p.id);   // gone right away; the server's rmpin frame is the confirmation
+        } catch (e) { console.warn('unpin', e); window.app?.toast?.('Could not remove pin'); ev.target.disabled = false; return; }
         this.map.closePopup();
       });
       return el;
@@ -166,9 +174,10 @@ export class MarkerLayers {
     return el;
   }
 
-  // right click / long press on the map: a small form, then POST /api/pin
-  openPinEditor(latlng) {
-    const { x, z } = fromLatLng(latlng);
+  // right click / long press on the map: a small form, then POST /api/pin.
+  // at: {left, top} screen position for the 3D view, where there is no Leaflet popup to hang it on
+  openPinEditor(latlng, at) {
+    const { x, z } = latlng.x !== undefined ? latlng : fromLatLng(latlng);
     let name = '';
     try { name = localStorage.getItem('webmap-pin-name') || ''; } catch (e) { /* no storage */ }
     const el = document.createElement('form');
@@ -178,7 +187,22 @@ export class MarkerLayers {
       <input name="text" maxlength="20" placeholder="Label (letters, numbers)" autocomplete="off"></div>
       <div class="row"><input name="name" maxlength="16" placeholder="Your name" value="${escape(name)}" autocomplete="off"><button class="btn small" type="submit">Add pin</button></div>
       <small class="err" hidden></small>`;
-    const popup = L.popup({ closeButton: true, autoPan: true, className: 'pin-form-popup' }).setLatLng(latlng).setContent(el).openOn(this.map);
+    let popup = null, close;
+    if (at) {
+      document.querySelector('.pin-form-float')?.remove();
+      const box = document.createElement('div');
+      box.className = 'pin-form-float';
+      box.style.left = Math.min(at.left, innerWidth - 260) + 'px';
+      box.style.top = Math.min(at.top, innerHeight - 150) + 'px';
+      box.innerHTML = '<button class="icon-btn close" type="button" title="Close"><svg><use href="#i-close"/></svg></button>';
+      box.append(el);
+      document.body.append(box);
+      close = () => box.remove();
+      box.querySelector('.close').addEventListener('click', close);
+    } else {
+      popup = L.popup({ closeButton: true, autoPan: true, className: 'pin-form-popup' }).setLatLng(latlng).setContent(el).openOn(this.map);
+      close = () => this.map.closePopup(popup);
+    }
     setTimeout(() => el.querySelector('[name=text]').focus(), 50);
     el.addEventListener('submit', async (ev) => {
       ev.preventDefault();
@@ -190,7 +214,7 @@ export class MarkerLayers {
         const r = await fetch('api/pin', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-WebMap-Client': clientId() },
           body: JSON.stringify({ x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, type: fd.get('type'), text: fd.get('text'), name: who, client: clientId() }) });
         if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || r.status); }
-        this.map.closePopup(popup);
+        close();
       } catch (e) { err.textContent = 'Could not add pin: ' + e.message; err.hidden = false; }
     });
   }
