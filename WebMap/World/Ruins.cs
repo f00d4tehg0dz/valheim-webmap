@@ -70,6 +70,12 @@ namespace WebMap.World
                     // never spawners, pickables, loot or anything a player could farm off the map
                     bool excluded = n.StartsWith("dungeon_") || n.Contains("spawner") || n.StartsWith("pickable") || n.Contains("treasure") || n.Contains("loot")
                         || n.Contains("_ragdoll") || n.StartsWith("vfx_") || n.StartsWith("sfx_") || n.StartsWith("fx_");
+                    // no spoilers, same rule as the markers: nothing that gives away a boss altar, a trader,
+                    // or the way into a crypt, cave or vault
+                    if (!excluded && (n.Contains("altar") || n.Contains("goblinking") || n.Contains("vendor") || n.Contains("haldor") || n.Contains("hildir")
+                        || n.Contains("bogwitch") || n.Contains("trader") || n.Contains("crypt") || n.Contains("cave") || n.Contains("dungeon") || n.Contains("vault")
+                        || n.Contains("runestone") || n.Contains("totem") || n.Contains("offering")))
+                        excluded = true;
                     // creatures (the fulings themselves match "goblin"), pickables, items and bones are not buildings
                     if (!excluded)
                         foreach (var comp in new[] { "Character", "Humanoid", "MonsterAI", "AnimalAI", "Pickable", "ItemDrop", "Tameable" })

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.1.7
+
+Brought in [PR #19](https://github.com/f00d4tehg0dz/valheim-webmap/pull/19) by @cocopuff2u. Thanks!
+
+* World structures on the 2D map: abandoned houses, fuling villages, shipwrecks, mountain and castle ruins, drawn as weathered footprints under the player builds. "World structures (2D)" in Layers. Explored chunks only. Boss altars, traders, crypt and cave entrances are kept out, same no-spoilers rule as the markers. `/data/ruins/index.json`, `/data/ruins/{cx}_{cz}.json`. (#20)
+* Faster 2D: fog refreshes are skipped when nothing changed and encode off the main thread; tiles one ring past the edge are loaded early so a drag does not show black squares; a blurry whole-world picture sits under the tiles; the trees layer no longer fetches thousands of vegetation files on load; no tree gap between zoom 7 and 8.
+* First sweep 5 s after start instead of 30, plus one extra sweep (`second_sweep_delay`, default 30 s) to catch what was still loading. Sweeps run in bigger slices while nobody is online.
+* `enable_3d = false` now turns the 3D work off on the server too (no height tiles, object data, texture or mesh extraction) and hides the 3D and export buttons and panels.
+* Fix: `legacy_map = false` no longer serves the unfogged `/map` and `/map.jpg`, and a leftover `map.png` is not loaded. (#16)
+* Fix: 3D height spikes in Brave and other browsers that add noise to canvas reads. Heights are decoded from the PNG bytes directly. (#18)
+* Fix: event type filters actually hide the rows.
+
 ## 2.1.6
 
 * Rename or hide the auto-detected bases from the web page. Click a base marker: type a name and Rename, "Hide this base" to drop it, "Auto name" to go back to the portal tag. Saved in `map_data/<world>/bases.json`, kept across re-scans. `web_edit_bases` turns it off (a token still works). `POST /api/base`, `POST /api/bases/reset`. (#14)

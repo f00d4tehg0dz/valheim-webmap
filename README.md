@@ -38,6 +38,9 @@ browser. Share `http://your_ip:3000`. Players install nothing. Server only.
   shows health, stamina, eitr, what they wear and hold, how long they played,
   deaths, distance walked, visits. Updates live. Buttons: follow, go to,
   switch view.
+* **World structures.** Abandoned houses, fuling villages, shipwrecks,
+  mountain and castle ruins drawn on the 2D map where someone has been. Boss
+  altars, traders, crypt and cave entrances are not in it.
 * **Markers.** Portals with their tags and links, tombstones, player bases,
   boats, carts, your own `markers.json`. Boss altars, dungeons, traders and
   the world seed are never sent out. No spoilers.
@@ -180,6 +183,8 @@ cuts that by four.
 | Render | `max_render_zoom` | 7 | closest zoom over walked ground (7 = 1 m/px) |
 | Render | `height_max_zoom` | 7 | closest zoom for height tiles (3D) |
 | Sweep | `sweep_interval` | 120 | seconds between world walks |
+| Sweep | `first_sweep_delay` | 5 | seconds after world load before the first walk |
+| Sweep | `second_sweep_delay` | 30 | one extra walk this long after load, for things still loading during the first. 0 turns it off |
 | Sweep | `zdos_per_frame` | 3000 | objects looked at per frame during a walk |
 | Markers | `reveal_all` | false | no fog: whole world shown and sent out. Testing only |
 | User | `always_map` | true | lift fog where hidden players walk. Their spot stays hidden |
@@ -187,9 +192,9 @@ cuts that by four.
 | User | `show_last_seen_position` | false | offline players' last spot in stats |
 | Server | `server_port` | 3000 | HTTP port |
 | Server | `map_title` | (server name) | title on the page |
-| Server | `enable_3d` | true | offer the 3D view |
+| Server | `enable_3d` | true | offer the 3D view. Off: no height tiles, object data or model export either |
 | Server | `event_log` | true | write events to `events.jsonl` |
-| Server | `legacy_map` | true | build one big `map.png` for `/map` |
+| Server | `legacy_map` | true | build one big `map.png` for `/map`. Off: `/map` and `/map.jpg` answer 404 |
 | Models | `export_models` | true | export prefab meshes for 3D |
 | Models | `object_categories` | piece,other,rock,bush,tree | what the 3D view and export get |
 | Models | `use_textures` | true | textures on 3D models (off: flat colours) |
@@ -259,6 +264,7 @@ Steps per editor in [docs/EXPORT.md](https://github.com/f00d4tehg0dz/valheim-web
 | `/tiles/height/{z}/{x}/{y}.png` | height tile, [Terrarium] encoding |
 | `/data/structures/index.json`, `/data/structures/{cx}_{cz}.json` | pieces per 256 m chunk |
 | `/data/veg/{cx}_{cz}.bin` | vegetation points per chunk (`Vegetation.cs`) |
+| `/data/ruins/index.json`, `/data/ruins/{cx}_{cz}.json` | world-generated structures per chunk, explored chunks only |
 | `/data/objects/index.json`, `/data/objects/{cx}_{cz}.bin` | every placed object per chunk: prefab, position, rotation, scale (`WorldObjects.cs`) |
 | `/data/prefabs.json` | model library: which prefabs have a model, bounds, triangles, textures |
 | `/models/{hash}.glb`, `/models/tex_*.png` | exported models and textures. Cacheable |
