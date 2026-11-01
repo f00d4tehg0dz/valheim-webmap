@@ -10,9 +10,9 @@ browser. Share `http://your_ip:3000`. Players install nothing. Server only.
 * **Big map, every metre.** One pixel is one metre. Seven zoom levels, and
   three more past that where buildings, trees and rocks are drawn as shapes
   so they stay sharp. Shows ground the way players shaped it: flat bases,
-  moats, roads, farms. Trees, bushes and rocks drawn on top as their own
-  layer. Checkbox turns them off. Cut a forest down, map shows the clearing
-  next time it draws.
+  moats, roads, farms. Trees, bushes and rocks can be drawn on top as their
+  own layer (off by default, tick "Trees & rocks" in Layers). Cut a forest
+  down, map shows the clearing next time it draws.
 * **Buildings.** Every piece anyone placed, drawn as a footprint in its
   material colour. Hover to see what it is.
 * **3D view.** One click. Real ground, water, and every object drawn with the

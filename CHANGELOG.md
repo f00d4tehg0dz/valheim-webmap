@@ -11,6 +11,7 @@ Brought in [PR #19](https://github.com/f00d4tehg0dz/valheim-webmap/pull/19) by @
 * Fix: `legacy_map = false` no longer serves the unfogged `/map` and `/map.jpg`, and a leftover `map.png` is not loaded. (#16)
 * Fix: 3D height spikes in Brave and other browsers that add noise to canvas reads. Heights are decoded from the PNG bytes directly. (#18)
 * Fix: event type filters actually hide the rows.
+* "Trees & rocks (2D)" is off by default. Tick it in Layers when you want it; on a big world it is a lot of tiles.
 
 ## 2.1.6
 

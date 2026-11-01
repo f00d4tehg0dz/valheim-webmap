@@ -6,7 +6,7 @@ export const layerState = {
   buildings: true, buildingsOpacity: 1,
   ruins: true,          // world-generated structures (2D)
   players: true, pins: true, labels: true, grid: false,
-  veg: true,            // the 2D tree/rock overlay (the 3D view has its own object chips)
+  veg: false,           // the 2D tree/rock overlay, off until asked for: on a big world it is a lot of tiles (the 3D view has its own object chips)
   time3d: 'live',       // 3D lighting: 'live' follows the server's clock, or noon/morning/evening/night
   shadows: !matchMedia('(max-width: 720px)').matches,   // real shadows in 3D (off on phones by default)
   sets: new Map(),      // marker set id -> bool (missing = visible)

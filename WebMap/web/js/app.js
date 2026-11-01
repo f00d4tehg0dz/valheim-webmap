@@ -12,6 +12,7 @@ import { RuinsLayer } from './layers/ruins.js';
 import { MarkerLayers, escape } from './layers/markers.js';
 import { PlayersLayer } from './layers/players.js';
 import { chunks, objects, prefabs, markers, stats } from './data.js';
+import { layerState } from './layerstate.js';
 import { Sidebar } from './ui.js';
 
 const $ = (s) => document.querySelector(s);
@@ -35,7 +36,8 @@ class App {
     this.layers.veg = L.layerGroup([
       new FallbackTileLayer('tiles/veg/{z}/{x}/{y}.png', { zIndex: 101, minNative: 5, maxZoom: MAX_ZOOM + 0.99, className: 'maptiles vegtiles' }),
       new VegLayer(),
-    ]).addTo(this.map);
+    ]);
+    if (layerState.veg) this.layers.veg.addTo(this.map);
     this.gridLayer = null;
     this.hoverTip = L.tooltip({ direction: 'top', offset: [0, -8], opacity: 0.95 });
     this.map.on('zoomend', () => this.onZoom());
