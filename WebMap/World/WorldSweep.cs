@@ -98,6 +98,7 @@ namespace WebMap.World
             StructureMap.Begin();
             ForestMap.Begin();
             WorldObjects.Begin();
+            GroundDiscs.Begin();
             var changedZones = new HashSet<long>();
 
             int seen = 0;
@@ -110,6 +111,7 @@ namespace WebMap.World
                     {
                         Vector3 p = zdo.GetPosition();
                         int pref = zdo.GetPrefab();
+                        if (pref == GroundDiscs.ProxyPrefab) GroundDiscs.Observe(zdo, p);
                         if (pref == terrainCompilerHash)
                         {
                             if (TerrainPatches.Observe(zdo, p))
@@ -152,6 +154,9 @@ namespace WebMap.World
             }
 
             foreach (long z in Vegetation.Finish()) changedZones.Add(z);
+            // compared with what the tiles were last drawn with (kept on disk), so unlike the
+            // collectors above it is also valid on the first sweep after a start
+            var groundZones = GroundDiscs.Finish();
             yield return null;
             int changedChunks = Structures.Finish();
             Ruins.Finish();
@@ -178,6 +183,12 @@ namespace WebMap.World
                     TileStore.OnZoneChanged(zx, zz);
                     rerendered++;
                 }
+            foreach (long key in groundZones)
+            {
+                TileMath.UnzoneKey(key, out int zx, out int zz);
+                TileStore.OnZoneChanged(zx, zz, 0);
+                rerendered++;
+            }
 
             LastScanned = seen;
             LastSweepSeconds = Time.realtimeSinceStartup - t0;
@@ -185,7 +196,7 @@ namespace WebMap.World
             Sweeps++;
             sweeping = false;
             ZLog.Log($"WebMap: world sweep #{Sweeps}: {seen} objects in {LastSweepSeconds:0.0}s -> {Structures.Total} pieces ({changedChunks} chunks changed), "
-                   + $"{Vegetation.LastTrees} trees, {Vegetation.LastRocks} rocks, {TerrainPatches.Count} terraformed zones, {rerendered} zones re-rendered, "
+                   + $"{Vegetation.LastTrees} trees, {Vegetation.LastRocks} rocks, {TerrainPatches.Count} terraformed zones, {GroundDiscs.Count} ground discs, {rerendered} zones re-rendered, "
                    + $"{WorldObjects.Total} 3D objects ({changedObjectChunks} chunks changed), {Models.ModelStore.QueueLength} models to export");
             Live.Stats.OnSweep();
             MapDataServer.getInstance()?.BroadcastWorldRevision();
