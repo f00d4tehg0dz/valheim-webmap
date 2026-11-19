@@ -176,10 +176,14 @@ namespace WebMap.Tiles
         }
 
         // The ground in a zone changed: re-render the tiles that show it.
-        public static void OnZoneChanged(int zx, int zz)
+        public static void OnZoneChanged(int zx, int zz) => OnZoneChanged(zx, zz, 4);
+
+        // fromZoom: the lowest zoom redrawn. Terraforming is invisible below 8 m/px, but ground
+        // discs can be mountains, so a change to them redraws the overview tiles too.
+        public static void OnZoneChanged(int zx, int zz, int fromZoom)
         {
             float cx = TileMath.ZoneCenter(zx), cz = TileMath.ZoneCenter(zz);
-            for (int z = 4; z <= TileMath.MAX_ZOOM; z++)
+            for (int z = fromZoom; z <= TileMath.MAX_ZOOM; z++)
             {
                 // a zone can straddle up to four tiles at close zoom
                 for (int dz = -1; dz <= 1; dz += 2)

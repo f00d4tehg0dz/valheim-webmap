@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+* Ground discs. Ground raised or dug past the game's +-8 m limit with the Valheim World Editor's "No limit" (mountains, canyons, big pads) is saved as invisible `DevGround1` location proxies, not as terraforming, so the map showed the original ground there. The renderer now applies them the way the game does (the disc's height within 8 m, blended out to about 13 m, in the game's order) before the player terraforming. Discs are collected by the world sweep and remembered in `map_data/<world>/ground_discs.txt`; tiles over discs that were added, moved or removed are redrawn, including after an edit made while the server was off. The levelling done by the game's own locations (villages, altars) is not drawn yet. The one-off `/map` image is still the plain generated ground.
+
 ## 2.1.7
 
 Brought in [PR #19](https://github.com/f00d4tehg0dz/valheim-webmap/pull/19) by @cocopuff2u. Thanks!

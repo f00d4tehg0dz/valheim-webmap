@@ -123,6 +123,7 @@ namespace WebMap
             Events.LoadTail();
             Markers.LoadOverrides(worldDataPath);
             TileStore.Init(worldDataPath);
+            GroundDiscs.Init(worldDataPath);
             Models.ModelStore.Init(mapDataPath);
 
             if (forceReload) mapDataServer.Reload();

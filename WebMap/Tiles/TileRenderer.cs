@@ -79,6 +79,8 @@ namespace WebMap.Tiles
                     }
                     Heightmap.Biome b = wg.GetBiome(wx, wz);
                     float height = wg.GetBiomeHeight(b, wx, wz, out Color _);
+                    // the game levels ground discs (editor "No limit" ground) first, then adds player terraforming on top
+                    height = GroundDiscs.Level(wx, wz, height);
                     if (detail) height += TerrainPatches.DeltaAt(wx, wz);
                     h[i] = height;
                     biome[i] = (ushort)(int)b;
